@@ -2,13 +2,13 @@ This respository is an official implementation of the paper:
     A Fair Empirical Risk Minimization with Generalized Entropy
     https://arxiv.org/abs/2202.11966
 
---------------------------------------------------------------------------------
+---
 
 REQUIREMENTS
 
 - Python 3.8+
 
---------------------------------------------------------------------------------
+---
 
 USAGE
 

@@ -65,6 +65,33 @@ def main(args):
         ) as f:
             pickle.dump(exp_results, f)
 
+        exp_metrics = exp.get_metrics_with_prob(exp_results)
+        with open(
+            os.path.join(
+                args.output_dir,
+                f"{current_time}_{preset.name}_{group_idx}_metrics.pkl",
+            ),
+            "wb",
+        ) as f:
+            pickle.dump(exp_metrics, f)
+
+        exp.plot_metrics(
+            exp_metrics,
+            "I_alpha",
+            save_path=os.path.join(
+                args.output_dir,
+                f"{current_time}_{preset.name}_{group_idx}_Ialpha.pdf",
+            ),
+        )
+        exp.plot_metrics(
+            exp_metrics,
+            "err",
+            save_path=os.path.join(
+                args.output_dir,
+                f"{current_time}_{preset.name}_{group_idx}_err.pdf",
+            ),
+        )
+
     print("All done!")
 
 
