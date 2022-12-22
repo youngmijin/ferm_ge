@@ -1,65 +1,75 @@
-import sys
-from typing import Callable, DefaultDict, Dict, List, Optional, Tuple, TypeVar
+from typing import Callable, DefaultDict, List, Optional, Tuple, TypeVar
 
 import numpy as np
+from numba import njit
 from tqdm.std import trange
 
-DataItem = TypeVar("DataItem")
 Hypothesis = TypeVar("Hypothesis")
 
 
+@njit
 def ge(
     alpha: float,
-    b: Dict[DataItem, float],
-    X: List[DataItem],
-    P_x: Dict[DataItem, float],
-):
+    b: np.ndarray,
+    fraction_x: np.ndarray,
+) -> float:
     """
-    Calculate generalized entropy
+    Calculate generalized entropy (I_alpha)
+    Note that we call P_x as fraction_x here.
     (reference: definition 4.1 at section 4.1 in the paper)
     """
 
-    n = len(X)
+    assert b.ndim == 1 and fraction_x.ndim == 1
+    assert len(b) == len(fraction_x)
 
-    E_bx = 0.0
-    for i in range(n):
-        E_bx += P_x[X[i]] * b[X[i]]
-
-    I_alpha = 0.0
+    x = b / np.average(b, weights=fraction_x)
 
     if alpha == 0:
-        for i in range(n):
-            x = b[X[i]] / E_bx
-            I_alpha += P_x[X[i]] * -np.log(x + 1e-10)
-
+        return float(np.average(-np.log(x), weights=fraction_x))
     elif alpha == 1:
-        for i in range(n):
-            x = b[X[i]] / E_bx
-            I_alpha += P_x[X[i]] * x * np.log(x + 1e-10)
-
+        return float(np.average(x * np.log(x), weights=fraction_x))
     else:
-        for i in range(n):
-            x = b[X[i]] / E_bx
-            I_alpha += (
-                P_x[X[i]] * (np.power(x, alpha) - 1) / (alpha * (alpha - 1))
+        return float(
+            np.average(
+                (np.power(x, alpha) - 1) / (alpha * (alpha - 1)),
+                weights=fraction_x,
             )
+        )
 
-    return I_alpha
+
+@njit
+def ge_confmat(
+    alpha: float, r: float, tn: float, fp: float, fn: float, tp: float
+) -> float:
+    """Calculate I_alpha using given confusion matrix"""
+
+    b_stat = np.array([r, r - 1, r + 1])
+    fraction_x = np.array(
+        [
+            (tn + tp) / (tn + fp + fn + tp),
+            fn / (tn + fp + fn + tp),
+            fp / (tn + fp + fn + tp),
+        ]
+    )
+
+    return float(ge(alpha, b_stat, fraction_x))
 
 
-def get_Iup(alpha: float, r: float):
+@njit
+def get_Iup(alpha: float, r: float) -> float:
     """
     Calculate Iup (reference: section 5 in the paper)
     """
+
     rr = (r + 1) / (r - 1)
 
     if alpha == 0:
-        return np.log(rr)
+        return float(np.log(rr))
 
     if alpha == 1:
-        return rr * np.log(rr)
+        return float(rr * np.log(rr))
 
-    return (1 / ((alpha - 1) * alpha)) * (np.power(rr, alpha) - 1)
+    return float((1 / ((alpha - 1) * alpha)) * (np.power(rr, alpha) - 1))
 
 
 def solve_gefair(
@@ -70,8 +80,7 @@ def solve_gefair(
     gamma: float,
     lagrangian: Callable[[Hypothesis, float], float],
     oracle: Callable[[float], Hypothesis],
-    show_progress: bool = True,
-    description: Optional[str] = "Solving GE-Fairness",
+    show_progress: Optional[str] = None,
 ) -> Tuple[DefaultDict[Hypothesis, int], List[float]]:
     """
     Solve GE-Fairness (reference: algorithm 1 at section 5 in the paper)
@@ -94,12 +103,7 @@ def solve_gefair(
     hypothesis_choice_counter: DefaultDict[Hypothesis, int] = DefaultDict(int)
     lambda_choice_history: List[float] = []
 
-    iteration = (
-        trange(1, T + 1, desc=description, file=sys.stdout)
-        if show_progress
-        else range(1, T + 1)
-    )
-    for t in iteration:
+    for _ in trange(T, disable=(show_progress is None), desc=show_progress):
         lambda_t: float = (lambda_0 * w0 + lambda_1 * w1) / (w0 + w1)
 
         h_t = oracle(lambda_t)

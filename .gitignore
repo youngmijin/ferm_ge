@@ -21,5 +21,8 @@ __pycache__/
 
 ### Data ###
 data/*
-!data/.gitkeep
+!data/*.py
 *.pdf
+
+### Output ###
+output/

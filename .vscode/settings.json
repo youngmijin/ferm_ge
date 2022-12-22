@@ -15,6 +15,7 @@
     "--follow-imports=normal",
     "--show-column-numbers",
     "--no-pretty",
-    "--ignore-missing-imports"
+    "--ignore-missing-imports",
+    "--check-untyped-defs"
   ]
 }

@@ -1,3 +1,26 @@
-This respository implements:
-  A Fair Empirical Risk Minimization with Generalized Entropy
-  https://arxiv.org/abs/2202.11966
+This respository is an official implementation of the paper:
+    A Fair Empirical Risk Minimization with Generalized Entropy
+    https://arxiv.org/abs/2202.11966
+
+--------------------------------------------------------------------------------
+
+REQUIREMENTS
+
+- Python 3.8+
+
+--------------------------------------------------------------------------------
+
+USAGE
+
+1. Install dependencies
+
+    python -m pip install .
+
+2. Run the example experiments
+
+    python main.py --preset adult --alpha 0.0 1.0 2.0 --r 5.0 --gamma 0.02 --nu 0.04 --lambda_max 10.0
+
+3. Then the output will be saved in `./output/` directory as a pickle file.
+
+Type `main.py -h` for more options.
+Take a look at `plot.ipynb` for plotting the results.
