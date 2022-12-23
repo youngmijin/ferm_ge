@@ -20,6 +20,8 @@ class Adult(Preset):
         self.X_test: Optional[np.ndarray] = None
         self.y_test: Optional[np.ndarray] = None
 
+        self.load_files()
+
     @property
     def name(self) -> str:
         return "adult"
@@ -43,6 +45,9 @@ class Adult(Preset):
         return os.path.isfile(self.__file_local_path)
 
     def load_files(self):
+        if not self.check_files():
+            self.download()
+
         adult = pd.read_csv(self.__file_local_path)
         adult = adult.drop(columns=["fnlwgt"])
         adult = adult.replace({"?": np.nan})

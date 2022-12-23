@@ -57,17 +57,26 @@ class BaseTask(ABC):
         """
         pass
 
+    @property
     @abstractmethod
-    def is_ready(self) -> bool:
+    def trained(self) -> bool:
         """
-        Check if the model is trained and tested and can be used for prediction.
+        Whether the model is trained.
+        """
+        pass
+
+    @property
+    @abstractmethod
+    def tested(self) -> bool:
+        """
+        Whether the model is tested.
         """
         pass
 
 
 class BinaryLogisticClassificationTask(BaseTask):
-    def __init__(self, max_iter: int = 1000):
-        self.classifier = LogisticRegression(max_iter=max_iter)
+    def __init__(self):
+        self.classifier = LogisticRegression()
 
         self.is_trained = False
         self.train_pred: Optional[np.ndarray] = None
@@ -143,5 +152,10 @@ class BinaryLogisticClassificationTask(BaseTask):
         y_hat = (self.test_proba[:, 1] >= threshold).astype(int)
         return y_hat, confusion_matrix(self.test_y, y_hat).ravel()
 
-    def is_ready(self) -> bool:
-        return self.is_trained and self.is_tested
+    @property
+    def trained(self) -> bool:
+        return self.is_trained
+
+    @property
+    def tested(self) -> bool:
+        return self.is_tested

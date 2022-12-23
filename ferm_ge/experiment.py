@@ -50,6 +50,21 @@ class Experiment:
         self.thr_finding_granularity = thr_finding_granularity
         self.lambda_quantization_granularity = lambda_quantization_granularity
 
+    def calc_ge_without_ferm(self, alpha, r) -> Metrics:
+        """
+        Calculate GE fairness without FERM.
+        This is useful to find r.
+        """
+
+        assert self.task.trained, "Task must be trained first."
+
+        _, _, (tn, fp, fn, tp) = self.task.predict_train()
+
+        err: float = (fp + fn) / (tn + fp + fn + tp)
+        I_alpha: float = ge_confmat(alpha, r, tn, fp, fn, tp)
+
+        return Metrics(I_alpha, None, err, None)
+
     def _solve(
         self,
         param: Dict[str, float],
@@ -184,7 +199,9 @@ class Experiment:
     ) -> Dict[ExperimentKey, ExperimentResult]:
         """Solve the FERM-GE problems with given parameters"""
 
-        assert self.task.is_ready(), "Task must be trained and tested first."
+        assert (
+            self.task.trained and self.task.tested
+        ), "Task must be trained and tested first."
 
         params_comb = get_params_combination(params)
 

@@ -69,7 +69,7 @@ def get_Iup(alpha: float, r: float) -> float:
     if alpha == 1:
         return float(rr * np.log(rr))
 
-    return float((1 / ((alpha - 1) * alpha)) * (np.power(rr, alpha) - 1))
+    return float((np.power(rr, alpha) - 1) / np.abs((alpha - 1) * alpha))
 
 
 def solve_gefair(

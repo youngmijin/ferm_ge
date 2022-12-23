@@ -18,18 +18,6 @@ class Preset(ABC):
         pass
 
     @abstractmethod
-    def download(self):
-        pass
-
-    @abstractmethod
-    def check_files(self) -> bool:
-        pass
-
-    @abstractmethod
-    def load_files(self):
-        pass
-
-    @abstractmethod
     def get_train_data(self) -> Tuple[np.ndarray, np.ndarray]:
         pass
 
