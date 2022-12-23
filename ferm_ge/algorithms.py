@@ -22,17 +22,17 @@ def ge(
     assert b.ndim == 1 and fraction_x.ndim == 1
     assert len(b) == len(fraction_x)
 
-    x = b / np.average(b, weights=fraction_x)
+    x = b / np.dot(b, fraction_x)
 
     if alpha == 0:
-        return float(np.average(-np.log(x), weights=fraction_x))
+        return float(np.dot(-np.log(x), fraction_x))
     elif alpha == 1:
-        return float(np.average(x * np.log(x), weights=fraction_x))
+        return float(np.dot(x * np.log(x), fraction_x))
     else:
         return float(
-            np.average(
+            np.dot(
                 (np.power(x, alpha) - 1) / (alpha * (alpha - 1)),
-                weights=fraction_x,
+                fraction_x,
             )
         )
 

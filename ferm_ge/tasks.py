@@ -108,7 +108,11 @@ class BinaryLogisticClassificationTask(BaseTask):
             and self.train_proba is not None
             and self.train_confusion_matrix is not None
         ), "Classifier is not fitted yet."
-        return self.train_pred, self.train_proba, self.train_confusion_matrix
+        return (
+            self.train_pred,
+            self.train_proba,
+            self.train_confusion_matrix.ravel(),
+        )
 
     def predict_test(self) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         assert self.is_tested, "Classifier is not tested yet."
@@ -117,7 +121,11 @@ class BinaryLogisticClassificationTask(BaseTask):
             and self.test_proba is not None
             and self.test_confusion_matrix is not None
         ), "Classifier is not tested yet."
-        return self.test_pred, self.test_proba, self.test_confusion_matrix
+        return (
+            self.test_pred,
+            self.test_proba,
+            self.test_confusion_matrix.ravel(),
+        )
 
     def predict_train_with_threshold(
         self, threshold: float
@@ -125,7 +133,7 @@ class BinaryLogisticClassificationTask(BaseTask):
         assert self.is_trained, "Classifier is not fitted yet."
         assert self.train_proba is not None, "Classifier is not fitted yet."
         y_hat = (self.train_proba[:, 1] >= threshold).astype(int)
-        return y_hat, confusion_matrix(self.train_y, y_hat)
+        return y_hat, confusion_matrix(self.train_y, y_hat).ravel()
 
     def predict_test_with_threshold(
         self, threshold: float
@@ -133,7 +141,7 @@ class BinaryLogisticClassificationTask(BaseTask):
         assert self.is_tested, "Classifier is not tested yet."
         assert self.test_proba is not None, "Classifier is not tested yet."
         y_hat = (self.test_proba[:, 1] >= threshold).astype(int)
-        return y_hat, confusion_matrix(self.test_y, y_hat)
+        return y_hat, confusion_matrix(self.test_y, y_hat).ravel()
 
     def is_ready(self) -> bool:
         return self.is_trained and self.is_tested

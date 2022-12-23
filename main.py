@@ -39,7 +39,11 @@ def main(args):
     for group_idx in range(len(args.alpha)):
         print(f"Group {group_idx + 1}/{len(args.alpha)} ...")
 
-        exp = Experiment(preset.applicable_task)
+        exp = Experiment(
+            preset.applicable_task,
+            args.n_threshold_bins,
+            args.n_lambda_bins,
+        )
 
         param_dict: Dict[str, List[float]] = {
             "alpha": args.alpha[group_idx],
@@ -103,6 +107,9 @@ if __name__ == "__main__":
     parser.add_argument("--gamma", action="append", type=float, nargs="+")
     parser.add_argument("--nu", action="append", type=float, nargs="+")
     parser.add_argument("--lambda_max", action="append", type=float, nargs="+")
+
+    parser.add_argument("--n_threshold_bins", type=int, default=200)
+    parser.add_argument("--n_lambda_bins", type=int, default=200)
 
     parser.add_argument("--preset", type=str, required=True)
     parser.add_argument("--output_dir", type=str, default="output")

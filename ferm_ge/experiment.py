@@ -34,7 +34,9 @@ class ExperimentResult:
 @dataclass
 class Metrics:
     I_alpha: float
+    I_alpha_std: Optional[float]
     err: float
+    err_std: Optional[float]
 
 
 class Experiment:
@@ -91,7 +93,7 @@ class Experiment:
                 return L_threshold_cache[L_threshold_cache_key]
 
             confmat = self.task.predict_train_with_threshold(threshold)[1]
-            [tn, fp], [fn, tp] = confmat.astype(float)
+            tn, fp, fn, tp = confmat.astype(float)
             err: float = (fp + fn) / (tn + fp + fn + tp)
             I_alpha: float = ge_confmat(alpha, r, tn, fp, fn, tp)
 
@@ -128,19 +130,16 @@ class Experiment:
         )
 
         oracle_cache: List[float] = []
-        for lambda_ in tqdm(
+        for lambda_q in tqdm(
             lambda_quantization_bins,
-            desc=f"{exp_name} [1] Generating oracle caches",
+            desc=f"{exp_name} Generating oracle caches",
         ):
-            thr = find_threshold(lambda_)
+            thr = find_threshold(lambda_q)
             oracle_cache.append(thr)
 
         lagrangian_cache: List[float] = []
-        for lambda_i, lambda_ in tqdm(
-            enumerate(lambda_quantization_bins),
-            desc=f"{exp_name} [2] Generating lagrangian caches",
-        ):
-            L = find_L(oracle_cache[lambda_i], lambda_)
+        for lambda_i, lambda_q in enumerate(lambda_quantization_bins):
+            L = find_L(oracle_cache[lambda_i], lambda_q)
             lagrangian_cache.append(L)
 
         #############################
@@ -170,7 +169,7 @@ class Experiment:
             gamma,
             get_L_q,
             oracle_q,
-            show_progress=f"{exp_name} [3] Solving",
+            show_progress=f"{exp_name} Solving a fairness problem",
         )
 
         result = ExperimentResult(
@@ -231,7 +230,7 @@ class Experiment:
             for h, prob in h_prob.items():
                 thr = h
                 confmat = self.task.predict_test_with_threshold(thr)[1]
-                [tn, fp], [fn, tp] = confmat.astype(float)
+                tn, fp, fn, tp = confmat.astype(float)
                 err: float = (fp + fn) / (tn + fp + fn + tp)
                 I_alpha: float = ge_confmat(alpha, r, tn, fp, fn, tp)
                 test_I_alpha += I_alpha * prob
@@ -239,53 +238,69 @@ class Experiment:
 
             exp_metrics[exp_key] = Metrics(
                 I_alpha=test_I_alpha,
+                I_alpha_std=None,
                 err=test_err,
+                err_std=None,
             )
 
         return exp_metrics
 
+    def _get_metrics_with_repeat(
+        self,
+        exp_key: ExperimentKey,
+        exp_result: ExperimentResult,
+        repeat: int,
+    ) -> Tuple[ExperimentKey, Metrics]:
+        param_dict = {k: v for k, v in list(exp_key)}
+        alpha = param_dict["alpha"]
+        r = param_dict["r"]
+
+        h_counter = exp_result.h_counter
+        lambda_history = exp_result.lambda_history
+
+        h_prob = {
+            h: count / len(lambda_history) for h, count in h_counter.items()
+        }
+        rand_items = list(h_prob.keys())
+        rand_probs = list(h_prob.values())
+
+        test_I_alpha = []
+        test_err = []
+        for _ in range(repeat):
+            rand_h = np.random.choice(rand_items, p=rand_probs)
+            thr = rand_h
+            confmat = self.task.predict_test_with_threshold(thr)[1]
+            tn, fp, fn, tp = confmat.astype(float)
+            err: float = (fp + fn) / (tn + fp + fn + tp)
+            I_alpha: float = ge_confmat(alpha, r, tn, fp, fn, tp)
+            test_I_alpha.append(I_alpha)
+            test_err.append(err)
+
+        np_I_alpha = np.array(test_I_alpha)
+        np_err = np.array(test_err)
+
+        return exp_key, Metrics(
+            I_alpha=np_I_alpha.mean(),
+            I_alpha_std=np_I_alpha.std(),
+            err=np_err.mean(),
+            err_std=np_err.std(),
+        )
+
     def get_metrics_with_repeat(
         self,
         exp_results: Dict[ExperimentKey, ExperimentResult],
-        repeat: int,
+        repeat: int = 10000,
     ) -> Dict[ExperimentKey, Metrics]:
         """Get metrics with repating"""
 
+        mp_args = []
+        for key, result in exp_results.items():
+            mp_args.append((key, result, repeat))
+
         exp_metrics: Dict[ExperimentKey, Metrics] = {}
-
-        for exp_key, exp_result in tqdm(exp_results.items()):
-            param_dict = {k: v for k, v in list(exp_key)}
-            alpha = param_dict["alpha"]
-            r = param_dict["r"]
-
-            h_counter = exp_result.h_counter
-            lambda_history = exp_result.lambda_history
-
-            h_prob = {
-                h: count / len(lambda_history) for h, count in h_counter.items()
-            }
-            rand_items = list(h_prob.keys())
-            rand_probs = list(h_prob.values())
-
-            test_I_alpha = 0.0
-            test_err = 0.0
-            for _ in range(repeat):
-                rand_h = np.random.choice(rand_items, p=rand_probs)
-                thr = rand_h
-                confmat = self.task.predict_test_with_threshold(thr)[1]
-                [tn, fp], [fn, tp] = confmat.astype(float)
-                err: float = (fp + fn) / (tn + fp + fn + tp)
-                I_alpha: float = ge_confmat(alpha, r, tn, fp, fn, tp)
-                test_I_alpha += I_alpha
-                test_err += err
-
-            test_I_alpha /= repeat
-            test_err /= repeat
-
-            exp_metrics[exp_key] = Metrics(
-                I_alpha=test_I_alpha,
-                err=test_err,
-            )
+        pool = mp.Pool(processes=max(mp.cpu_count() - 4, 1))
+        for key, metric in pool.starmap(self._get_metrics_with_repeat, mp_args):
+            exp_metrics[key] = metric
 
         return exp_metrics
 
@@ -301,31 +316,37 @@ class Experiment:
 
         assert metric_name in ["I_alpha", "err"]
 
-        metrics_to_draw: Dict[ExperimentKey, Metrics] = {}
+        experiments_to_draw: Dict[ExperimentKey, Metrics] = {}
         r_values = set()
         for exp_key, exp_metric in exp_metrics.items():
             param_dict = {k: v for k, v in list(exp_key)}
             if not params_filter(param_dict):
                 continue
-            metrics_to_draw[exp_key] = exp_metric
+            experiments_to_draw[exp_key] = exp_metric
             r_values.add(param_dict["r"])
 
         fig, ax = plt.subplots(figsize=figsize)
 
-        if len(metrics_to_draw) == 0:
+        if len(experiments_to_draw) == 0:
             print("No metrics to draw.")
             return fig
 
         for r in r_values:
             plot_x = []
             plot_y = []
-            for exp_key, exp_metric in metrics_to_draw.items():
+            plot_err = []
+            for exp_key, exp_metric in experiments_to_draw.items():
                 param_dict = {k: v for k, v in list(exp_key)}
                 if param_dict["r"] != r:
                     continue
                 plot_x.append(param_dict["gamma"])
                 plot_y.append(getattr(exp_metric, metric_name))
-            ax.plot(plot_x, plot_y, "o-", label=f"r={r}")
+                if getattr(exp_metric, f"{metric_name}_std") is not None:
+                    plot_err.append(getattr(exp_metric, f"{metric_name}_std"))
+            if len(plot_err) > 0:
+                ax.errorbar(plot_x, plot_y, yerr=plot_err, label=f"r={r}")
+            else:
+                ax.plot(plot_x, plot_y, "o-", label=f"r={r}")
 
         if len(r_values) > 1:
             ax.legend()
