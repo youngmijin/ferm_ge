@@ -100,8 +100,8 @@ def solve_gefair(
     lambda_0: float = 0.0
     lambda_1: float = lambda_max
 
-    hypothesis_choice_counter: DefaultDict[Hypothesis, int] = DefaultDict(int)
-    lambda_choice_history: List[float] = []
+    D_bar: DefaultDict[Hypothesis, int] = DefaultDict(int)
+    lambda_bar: List[float] = []
 
     for _ in trange(T, disable=(show_progress is None), desc=show_progress):
         lambda_t: float = (lambda_0 * w0 + lambda_1 * w1) / (w0 + w1)
@@ -118,7 +118,7 @@ def solve_gefair(
             (lagrangian(h_t, lambda_1) + B) / A_alpha,
         )
 
-        hypothesis_choice_counter[h_t] += 1
-        lambda_choice_history.append(lambda_t)
+        D_bar[h_t] += 1
+        lambda_bar.append(lambda_t)
 
-    return hypothesis_choice_counter, lambda_choice_history
+    return D_bar, lambda_bar

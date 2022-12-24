@@ -1,6 +1,6 @@
 import multiprocessing as mp
+from collections import defaultdict
 from dataclasses import dataclass
-from multiprocessing.managers import DictProxy
 from typing import (
     Callable,
     DefaultDict,
@@ -15,14 +15,13 @@ from typing import (
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.figure import Figure
-from tqdm.std import tqdm
 
 from .algorithms import ge_confmat, solve_gefair
 from .tasks import BaseTask
 from .utils import get_params_combination
 
 ExperimentKey = FrozenSet[Tuple[str, float]]
-LThresholdCacheDict = Dict[FrozenSet[float], float]
+GEErrCacheDict = Dict[FrozenSet[float], Tuple[float, float]]
 
 
 @dataclass
@@ -44,11 +43,9 @@ class Experiment:
         self,
         task_cls: Type[BaseTask],
         thr_finding_granularity: int = 200,
-        lambda_quantization_granularity: int = 200,
     ):
         self.task = task_cls()
         self.thr_finding_granularity = thr_finding_granularity
-        self.lambda_quantization_granularity = lambda_quantization_granularity
 
     def calc_ge_without_ferm(self, alpha, r) -> Metrics:
         """
@@ -68,7 +65,7 @@ class Experiment:
     def _solve(
         self,
         param: Dict[str, float],
-        L_threshold_cache: LThresholdCacheDict,
+        ge_err_cache: GEErrCacheDict,
     ) -> Tuple[ExperimentKey, ExperimentResult]:
         """
         Solve a FERM-GE problem with given parameters.
@@ -98,83 +95,33 @@ class Experiment:
         ### Threshold-finding functions ###
         ###################################
 
-        def find_L(threshold: float, lambda_: float) -> float:
+        def calc_L(threshold: float, lambda_: float) -> float:
             """Find Lagrangian with given lambda and threshold"""
 
-            L_threshold_cache_key = frozenset(
-                [threshold, lambda_, r, alpha, gamma]
-            )
-            if L_threshold_cache_key in L_threshold_cache:
-                return L_threshold_cache[L_threshold_cache_key]
+            I_alpha, err = ge_err_cache[frozenset([alpha, r, threshold])]
+            return err + lambda_ * (I_alpha - gamma)
 
-            confmat = self.task.predict_train_with_threshold(threshold)[1]
-            tn, fp, fn, tp = confmat.astype(float)
-            err: float = (fp + fn) / (tn + fp + fn + tp)
-            I_alpha: float = ge_confmat(alpha, r, tn, fp, fn, tp)
-
-            # Calculate L (reference: Section 5)
-            L = err + lambda_ * (I_alpha - gamma)
-
-            L_threshold_cache[L_threshold_cache_key] = L
-            return L
+        thr_candidates = np.linspace(0, 1, self.thr_finding_granularity)
+        thr_cache: Dict[float, float] = {}
 
         def find_threshold(lambda_: float) -> float:
             """Find threshold for a given lambda value"""
 
-            thr_candidates = np.linspace(0, 1, self.thr_finding_granularity)
+            if lambda_ in thr_cache:
+                return thr_cache[lambda_]
 
-            L_of_lambda = []
-            for thr in thr_candidates:
-                L = find_L(thr, lambda_)
-                L_of_lambda.append(L)
+            thr_of_lambda = float(
+                thr_candidates[
+                    np.argmin([calc_L(thr, lambda_) for thr in thr_candidates])
+                ]
+            )
 
-            thr_of_lambda = float(thr_candidates[np.argmin(L_of_lambda)])
+            thr_cache[lambda_] = thr_of_lambda
             return thr_of_lambda
-
-        ###########################################
-        ### Pre-calculate Oracles & Lagrangians ###
-        ###########################################
-
-        # Note: lambda quantization is used to reduce the number of times
-        #       we will call the quantized lambda as "lambda_q".
-
-        lambda_quantization_bins = np.linspace(
-            0,
-            lambda_max,
-            self.lambda_quantization_granularity + 1,
-        )
-
-        oracle_cache: List[float] = []
-        for lambda_q in tqdm(
-            lambda_quantization_bins,
-            desc=f"{exp_name} Generating oracle caches",
-        ):
-            thr = find_threshold(lambda_q)
-            oracle_cache.append(thr)
-
-        lagrangian_cache: List[float] = []
-        for lambda_i, lambda_q in enumerate(lambda_quantization_bins):
-            L = find_L(oracle_cache[lambda_i], lambda_q)
-            lagrangian_cache.append(L)
 
         #############################
         ### Solve FERM-GE Problem ###
         #############################
-
-        def get_lambda_q_idx(lambda_: float) -> np.intp:
-            """Return the nearest lambda's index in lambda quantization bins"""
-
-            return np.argmin(np.abs(lambda_quantization_bins - lambda_))
-
-        def oracle_q(lambda_: float) -> float:
-            """An oracle with quantized lambdas (finding $\\hat{h}^{(t)}$)"""
-
-            return oracle_cache[get_lambda_q_idx(lambda_)]
-
-        def get_L_q(h: float, lambda_: float) -> float:
-            """Lagrangian with quantized lambdas (finding $L(h,\\lambda)$)"""
-
-            return lagrangian_cache[get_lambda_q_idx(lambda_)]
 
         h_counter, lambda_history = solve_gefair(
             alpha,
@@ -182,8 +129,8 @@ class Experiment:
             nu,
             r,
             gamma,
-            get_L_q,
-            oracle_q,
+            calc_L,
+            find_threshold,
             show_progress=f"{exp_name} Solving a fairness problem",
         )
 
@@ -205,15 +152,31 @@ class Experiment:
 
         params_comb = get_params_combination(params)
 
-        mp_man = mp.Manager()
-        L_threshold_cache: DictProxy[FrozenSet[float], float] = mp_man.dict()
+        thr_candidates = np.linspace(0, 1, self.thr_finding_granularity)
+        err_confmat_cache: Dict[
+            float, Tuple[float, Tuple[float, float, float, float]]
+        ] = {}
+        for thr in thr_candidates:
+            _, confmat = self.task.predict_test_with_threshold(thr)
+            tn, fp, fn, tp = confmat.astype(float)
+            err: float = (fp + fn) / (tn + fp + fn + tp)
+            err_confmat_cache[thr] = (err, (tn, fp, fn, tp))
+
+        ge_err_cache: GEErrCacheDict = {}
+        for alpha in params["alpha"]:
+            for r in params["r"]:
+                for thr in thr_candidates:
+                    ge_err_cache_key = frozenset([alpha, r, thr])
+                    err, (tn, fp, fn, tp) = err_confmat_cache[thr]
+                    I_alpha = ge_confmat(alpha, r, tn, fp, fn, tp)
+                    ge_err_cache[ge_err_cache_key] = (I_alpha, err)
 
         mp_args = []
         for parami, param in enumerate(params_comb):
             mp_param = param.copy()
             mp_param["exp_index"] = parami
             mp_param["exp_total"] = len(params_comb)
-            mp_args.append((mp_param, L_threshold_cache))
+            mp_args.append((mp_param, ge_err_cache))
 
         results: Dict[ExperimentKey, ExperimentResult] = {}
         pool = mp.Pool(processes=max(mp.cpu_count() - 4, 1))
