@@ -92,7 +92,12 @@ def main(args):
         ) as f:
             pickle.dump(exp_results, f)
 
-        exp_metrics = exp.get_metrics_with_prob(exp_results)
+        if args.test_repeat_times > 0:
+            exp_metrics = exp.get_metrics_with_repeat(
+                exp_results, args.test_repeat_times
+            )
+        else:
+            exp_metrics = exp.get_metrics_with_prob(exp_results)
         with open(
             os.path.join(
                 args.output_dir,
@@ -161,6 +166,7 @@ if __name__ == "__main__":
     )
 
     parser.add_argument("--thr_finding_granularity", type=int, default=200)
+    parser.add_argument("--test_repeat_times", type=int, default=10000)
 
     parser.add_argument("--preset", type=str, required=True)
     parser.add_argument("--output_dir", type=str, default="output")

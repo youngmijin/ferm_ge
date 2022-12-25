@@ -1,4 +1,4 @@
-This respository is an official implementation of the paper:
+This respository contains an official implementation of the paper:
     A Fair Empirical Risk Minimization with Generalized Entropy
     https://arxiv.org/abs/2202.11966
 
@@ -19,7 +19,7 @@ USAGE
 
 2. Run the example experiments
 
-    python main.py --preset adult --alpha 1.0 --r 1.5 --gamma 0.04 --nu 0.04 --lambda_max 10.0
+     python main.py --preset adult --alpha 1.0 --r 1.5 --gamma "np.linspace(0.03, 0.1, 50)" --nu 0.04 --lambda_max 10.0
 
 3. Then the output will be saved in `./output/` directory as a pickle file.
 

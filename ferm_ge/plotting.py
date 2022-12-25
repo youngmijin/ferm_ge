@@ -46,9 +46,17 @@ def plot_line(
             if getattr(exp_metric, f"{metric_name}_std") is not None:
                 plot_err.append(getattr(exp_metric, f"{metric_name}_std"))
         if len(plot_err) > 0:
-            ax.errorbar(plot_x, plot_y, yerr=plot_err, label=f"r={r}")
+            plot_err = [e * 1.96 for e in plot_err]  # 95% confidence interval
+            ax.plot(plot_x, plot_y, label=f"r={r}", color="black")
+            ax.fill_between(
+                plot_x,
+                [y - e for y, e in zip(plot_y, plot_err)],  # type: ignore
+                [y + e for y, e in zip(plot_y, plot_err)],  # type: ignore
+                color="black",
+                alpha=0.2,
+            )
         else:
-            ax.plot(plot_x, plot_y, "o-", label=f"r={r}")
+            ax.plot(plot_x, plot_y, "o-", label=f"r={r}", color="black")
 
     if len(r_values) > 1:
         ax.legend()
@@ -57,7 +65,3 @@ def plot_line(
         fig.savefig(save_path, bbox_inches="tight", dpi=600)
 
     return fig
-
-
-def plot_band():
-    raise NotImplementedError
