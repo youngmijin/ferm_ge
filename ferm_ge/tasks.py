@@ -76,7 +76,7 @@ class BaseTask(ABC):
 
 class BinaryLogisticClassificationTask(BaseTask):
     def __init__(self):
-        self.classifier = LogisticRegression()
+        self.classifier = LogisticRegression(max_iter=1000)
 
         self.is_trained = False
         self.train_pred: Optional[np.ndarray] = None
