@@ -1,4 +1,4 @@
-This respository contains an official implementation of the paper:
+This repository contains an official implementation of the paper:
     A Fair Empirical Risk Minimization with Generalized Entropy
     https://arxiv.org/abs/2202.11966
 
@@ -7,7 +7,7 @@ This respository contains an official implementation of the paper:
 REQUIREMENTS
 
 - Python 3.8+
-- g++
+- g++ supporting C++11
 
 ---
 
@@ -17,17 +17,21 @@ USAGE
 
     python -m pip install .
 
-2. Run the example experiments
+2. Run example experiments
 
-    python main.py --preset adult --alpha 1.0 --r 1.5 --gamma "np.linspace(0.03, 0.0.05, 30)" --nu 0.02 --lambda_max 20.0
+    python main.py --preset adult --alpha 0.0 --alpha 1.0 --alpha 2.0 --r 1.5 1.6 1.7 --gamma "np.linspace(0.03, 0.05, 20)" --nu 0.01 --lambda_max 20.0
+    python main.py --preset adult --plot_convergence --alpha 0.0 --alpha 1.0 --alpha 2.0 --gamma 0.04 --r 1.5 1.6 1.7 --nu 0.01 --lambda_max 20.0
 
-3. Then the output will be saved in `./output/` directory as a pickle file.
+3. Then the outputs will be saved in `./output/` directory.
 
 Type `main.py -h` for more options.
-Take a look at `plot.ipynb` for API usages.
+Take a look at `plot.ipynb` for API usages and plotting.
+If you want a more minimal example, take a look at `mini.ipynb`.
 
 ---
 
-NOTES
+NOTE
 
-- This code is not optimized for space efficiency. It may requires a lot of memory and storage.
+- This code is not optimized for space efficiency. It may require a lot of memory and storage.
+- Running time varies depending on the parameters. It may take a few seconds to an hour.
+- Feel free to leave an issue if you have any questions.

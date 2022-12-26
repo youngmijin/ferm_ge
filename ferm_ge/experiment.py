@@ -1,29 +1,22 @@
+import gc
 import multiprocessing as mp
-import time
-from dataclasses import dataclass
-from multiprocessing.pool import Pool
+import os
+from multiprocessing.pool import ThreadPool as Pool
 from typing import Dict, List, Optional, Tuple, Type
 
 import numpy as np
-import tqdm.std as tqdm
+import psutil
 
 from .algorithm_ge import ge_confmat
-from .algorithm_gefair import GEFairResult, GEFairSolver
+from .algorithm_gefair import GEFairResultSM, GEFairSolverC
+from .metrics import Metrics, calc_metrics
 from .tasks import BaseTask
 from .utils import (
     FrozenKey,
-    frozenkey_to_paramdict,
     get_params_combination,
     paramdict_to_frozenkey,
+    predict_memory_consumption,
 )
-
-
-@dataclass
-class Metrics:
-    I_alpha: float
-    I_alpha_std: Optional[float]
-    err: float
-    err_std: Optional[float]
 
 
 class Experiment:
@@ -37,32 +30,21 @@ class Experiment:
             0, 1, thr_finding_granularity
         ).tolist()
 
-        GEFairSolver.compile_gefair()
+        self.lib_path = GEFairSolverC.compile_gefair()
 
-    def calc_ge_without_ferm(self, alpha, r) -> Metrics:
-        """
-        Calculate GE fairness without FERM.
-        This is useful to find r.
-        """
+    def __del__(self):
+        if os.path.exists(self.lib_path):
+            os.remove(self.lib_path)
 
-        assert self.task.trained, "Task must be trained first."
-
-        _, _, (tn, fp, fn, tp) = self.task.predict_train()
-
-        err: float = (fp + fn) / (tn + fp + fn + tp)
-        I_alpha: float = ge_confmat(alpha, r, tn, fp, fn, tp)
-
-        return Metrics(I_alpha, None, err, None)
-
-    def _solve(
+    def _run(
         self,
         param: Dict[str, float],
         collect_ge_history: bool,
         I_alpha_cache: List[float],
         err_cache: List[float],
-    ) -> Tuple[FrozenKey, GEFairResult]:
+    ) -> Tuple[FrozenKey, GEFairResultSM]:
         """
-        Solve a FERM-GE problem with given parameters.
+        Run a FERM-GE solver with given parameters.
         """
 
         assert "alpha" in param, "alpha must be in params"
@@ -79,7 +61,7 @@ class Experiment:
 
         key = paramdict_to_frozenkey(param)
 
-        result = GEFairSolver().solve_gefair(
+        result = GEFairSolverC(self.lib_path).solve_gefair(
             self.thr_candidates,
             I_alpha_cache,
             err_cache,
@@ -93,20 +75,24 @@ class Experiment:
 
         return key, result
 
-    def solve(
+    def run(
         self,
         params: Dict[str, List[float]],
         collect_ge_history: bool = False,
-    ) -> Dict[FrozenKey, GEFairResult]:
-        """Solve the FERM-GE problems with given parameters"""
+        delete_results: bool = False,
+        return_metrics: bool = False,
+        metrics_repeat_times: int = 10000,
+    ) -> Tuple[
+        Optional[Dict[FrozenKey, GEFairResultSM]],
+        Optional[Dict[FrozenKey, Metrics]],
+    ]:
+        """Run the FERM-GE solver with given parameters"""
 
         assert (
             self.task.trained and self.task.tested
         ), "Task must be trained and tested first."
 
         params_comb = get_params_combination(params)
-
-        print("Calculating error and GE fairness...", end=" ", flush=True)
 
         err_confmat_cache: Dict[
             float, Tuple[float, Tuple[float, float, float, float]]
@@ -130,8 +116,7 @@ class Experiment:
                     err_list.append(err)
                 ge_cache[alpha][r] = (I_alpha_list, err_list)
 
-        print("done", flush=True)
-
+        mem_usages = []
         mp_args = []
         for param in params_comb:
             mp_args.append(
@@ -141,120 +126,74 @@ class Experiment:
                     *ge_cache[param["alpha"]][param["r"]],
                 )
             )
+            mem_usages.append(
+                predict_memory_consumption(
+                    len(self.thr_candidates),
+                    param["alpha"],
+                    param["lambda_max"],
+                    param["nu"],
+                    param["r"],
+                    param["gamma"],
+                    collect_ge_history,
+                )
+            )
 
-        results: Dict[FrozenKey, GEFairResult] = {}
         if len(mp_args) == 1:
-            print("Solving FERM-GE problem...", end=" ", flush=True)
-            start_time = time.time()
-            key, result = self._solve(*mp_args[0])
-            print(f"done ({time.time() - start_time:.2f} sec)", flush=True)
-            results[key] = result
+            key, result = self._run(*mp_args[0])
+            metric: Optional[Dict[FrozenKey, Metrics]] = None
+            if return_metrics:
+                metric = calc_metrics(
+                    {key: result},
+                    self.task,
+                    metrics_repeat_times,
+                )
+            if delete_results:
+                del result
+                return None, metric
+            return {key: result}, metric
         else:
-            pbar = tqdm.tqdm(
-                total=len(mp_args),
-                desc="Solving FERM-GE problems...",
-            )
-            pool = Pool(processes=min(max(mp.cpu_count() - 4, 1), len(mp_args)))
-            for key, result in pool.starmap(self._solve, mp_args):
-                results[key] = result
-                pbar.update()
-            pbar.close()
+            results: Dict[FrozenKey, GEFairResultSM] = {}
+            metrics: Dict[FrozenKey, Metrics] = {}
 
-        return results
+            available_mem = psutil.virtual_memory().available - 2 * 1024**3
+            pool_max_size = max(mp.cpu_count() - 4, 1)
 
-    def get_metrics_with_prob(
-        self,
-        exp_results: Dict[FrozenKey, GEFairResult],
-    ) -> Dict[FrozenKey, Metrics]:
-        """Get metrics with probability"""
+            while True:
+                current_predict_mem = mem_usages.pop(0)
+                current_mp_args = [mp_args.pop(0)]
+                while len(mp_args) > 0:
+                    if len(current_mp_args) == pool_max_size:
+                        break
+                    next_predict_mem = current_predict_mem + mem_usages[0]
+                    if next_predict_mem > available_mem:
+                        break
+                    current_predict_mem = next_predict_mem
+                    current_mp_args.append(mp_args.pop(0))
+                    mem_usages.pop(0)
 
-        exp_metrics: Dict[FrozenKey, Metrics] = {}
+                pool = Pool(processes=len(current_mp_args))
+                for key, result in pool.starmap(self._run, current_mp_args):
+                    if return_metrics:
+                        metrics[key] = list(
+                            calc_metrics(
+                                {key: result}, self.task, metrics_repeat_times
+                            ).values()
+                        )[0]
+                    if delete_results:
+                        del result
+                    else:
+                        results[key] = result
+                pool.close()
+                gc.collect()
 
-        for exp_key, exp_result in exp_results.items():
-            param_dict = frozenkey_to_paramdict(exp_key)
-            alpha = param_dict["alpha"]
-            r = param_dict["r"]
+                if len(mp_args) == 0:
+                    break
 
-            thr_prob = {
-                thr: count / exp_result.T
-                for thr, count in exp_result.D_bar.items()
-            }
-
-            test_I_alpha = 0.0
-            test_err = 0.0
-            for thr, prob in thr_prob.items():
-                confmat = self.task.predict_test_with_threshold(thr)[1]
-                tn, fp, fn, tp = confmat.astype(float)
-                err: float = (fp + fn) / (tn + fp + fn + tp)
-                I_alpha: float = ge_confmat(alpha, r, tn, fp, fn, tp)
-                test_I_alpha += I_alpha * prob
-                test_err += err * prob
-
-            exp_metrics[exp_key] = Metrics(
-                I_alpha=test_I_alpha,
-                I_alpha_std=None,
-                err=test_err,
-                err_std=None,
-            )
-
-        return exp_metrics
-
-    def _get_metrics_with_repeat(
-        self,
-        exp_key: FrozenKey,
-        exp_result: GEFairResult,
-        repeat: int,
-    ) -> Tuple[FrozenKey, Metrics]:
-        param_dict = frozenkey_to_paramdict(exp_key)
-        alpha = param_dict["alpha"]
-        r = param_dict["r"]
-
-        thr_prob = {
-            thr: count / exp_result.T for thr, count in exp_result.D_bar.items()
-        }
-        rand_items = list(thr_prob.keys())
-        rand_probs = list(thr_prob.values())
-
-        ge_err_cache: Dict[float, Tuple[float, float]] = {}
-        for thr in rand_items:
-            confmat = self.task.predict_test_with_threshold(thr)[1]
-            tn, fp, fn, tp = confmat.astype(float)
-            err: float = (fp + fn) / (tn + fp + fn + tp)
-            I_alpha: float = ge_confmat(alpha, r, tn, fp, fn, tp)
-            ge_err_cache[thr] = (I_alpha, err)
-
-        test_I_alpha = []
-        test_err = []
-        for _ in range(repeat):
-            rand_thr = np.random.choice(rand_items, p=rand_probs)
-            I_alpha, err = ge_err_cache[rand_thr]
-            test_I_alpha.append(I_alpha)
-            test_err.append(err)
-
-        np_I_alpha = np.array(test_I_alpha)
-        np_err = np.array(test_err)
-
-        return exp_key, Metrics(
-            I_alpha=np_I_alpha.mean(),
-            I_alpha_std=np_I_alpha.std(),
-            err=np_err.mean(),
-            err_std=np_err.std(),
-        )
-
-    def get_metrics_with_repeat(
-        self,
-        exp_results: Dict[FrozenKey, GEFairResult],
-        repeat: int = 10000,
-    ) -> Dict[FrozenKey, Metrics]:
-        """Get metrics with repating"""
-
-        mp_args = []
-        for key, result in exp_results.items():
-            mp_args.append((key, result, repeat))
-
-        exp_metrics: Dict[FrozenKey, Metrics] = {}
-        pool = mp.Pool(processes=max(mp.cpu_count() - 4, 1))
-        for key, metric in pool.starmap(self._get_metrics_with_repeat, mp_args):
-            exp_metrics[key] = metric
-
-        return exp_metrics
+            if return_metrics and delete_results:
+                return None, metrics
+            elif not return_metrics and delete_results:
+                return None, None
+            elif return_metrics and not delete_results:
+                return results, metrics
+            else:
+                return results, None

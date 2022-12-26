@@ -1,4 +1,5 @@
 import argparse
+import gc
 import importlib
 import inspect
 import os
@@ -7,9 +8,17 @@ import time
 from typing import Dict, List
 
 import numpy as np
+import yaml
+from matplotlib._color_data import BASE_COLORS, CSS4_COLORS
 
 from data import Preset
-from ferm_ge import Experiment, plot_convergence, plot_metrics
+from ferm_ge import (
+    Experiment,
+    plot_convergence,
+    plot_metrics,
+    plotting_default_colors,
+    plotting_default_figsize,
+)
 
 
 def versatile_float(s: str) -> List[float]:
@@ -28,6 +37,12 @@ def flatten_list(l: List[List[float]]) -> List[float]:
 
 
 def main(args):
+    # Check if colors are valid
+    for color in args.colors:
+        if color not in BASE_COLORS and color not in CSS4_COLORS:
+            raise ValueError(f"Invalid color: {color}")
+
+    # Load preset (dataset and its task class)
     preset_class = None
     for v in importlib.import_module(f"data.{args.preset}").__dict__.values():
         if inspect.isclass(v) and issubclass(v, Preset) and v is not Preset:
@@ -35,110 +50,172 @@ def main(args):
             break
     if preset_class is None:
         raise ValueError(f"Invalid preset: {args.preset}")
-
     preset: Preset = preset_class()
-
     print("Preset:", preset.name)
 
+    # Analyze given parameters and create parameter groups
     assert (
-        len(args.alpha)
-        == len(args.r)
-        == len(args.gamma)
-        == len(args.nu)
-        == len(args.lambda_max)
-    ), "All parameters must have the same length."
+        len(
+            set(
+                [
+                    1,
+                    len(args.alpha),
+                    len(args.r),
+                    len(args.gamma),
+                    len(args.nu),
+                    len(args.lambda_max),
+                ]
+            )
+        )
+        < 3  # ♡
+    ), "All parameters must have the same length or 1."
 
-    current_time = time.strftime("%Y-%m-%d_%H-%M-%S", time.localtime())
+    def get_arg_list(name: str, group_idx: int) -> List[float]:
+        if len(args.__dict__[name]) == 1:
+            return flatten_list(args.__dict__[name][0])
+        return flatten_list(args.__dict__[name][group_idx])
 
+    param_dicts: List[Dict[str, List[float]]] = []
     for group_idx in range(len(args.alpha)):
-        print(f"Group {group_idx + 1}/{len(args.alpha)} ...", flush=True)
+        param_dict: Dict[str, List[float]] = {
+            "alpha": get_arg_list("alpha", group_idx),
+            "r": get_arg_list("r", group_idx),
+            "gamma": get_arg_list("gamma", group_idx),
+            "nu": get_arg_list("nu", group_idx),
+            "lambda_max": get_arg_list("lambda_max", group_idx),
+        }
+        print(f"Group [ {group_idx + 1} / {len(args.alpha)} ] parameters:")
+        print(param_dict)
+        param_dicts.append(param_dict)
 
+    # Run experiments
+    run_name = time.strftime("%Y-%m-%d_%H-%M-%S", time.localtime())
+    for group_idx in range(len(args.alpha)):
+        print(
+            f"Running group [ {group_idx + 1} / {len(args.alpha)} ]",
+            flush=True,
+        )
+
+        # Save parameters
+        param_dict = param_dicts[group_idx]
+        os.makedirs(args.output_dir, exist_ok=True)
+        with open(
+            os.path.join(
+                args.output_dir,
+                f"{run_name}_{preset.name}_{group_idx}_params.yaml",
+            ),
+            "w",
+        ) as fs:
+            yaml.dump(param_dict, fs)
+
+        # Run experiments and save metrics (I_alpha and err)
+        print("  - Running experiments...", flush=True, end=" ")
+        start_time = time.time()
         exp = Experiment(
             preset.applicable_task,
             args.thr_finding_granularity,
         )
-
-        param_dict: Dict[str, List[float]] = {
-            "alpha": flatten_list(args.alpha[group_idx]),
-            "r": flatten_list(args.r[group_idx]),
-            "gamma": flatten_list(args.gamma[group_idx]),
-            "nu": flatten_list(args.nu[group_idx]),
-            "lambda_max": flatten_list(args.lambda_max[group_idx]),
-        }
-
-        with open(
-            os.path.join(
-                args.output_dir,
-                f"{current_time}_{preset.name}_{group_idx}_params.pkl",
-            ),
-            "wb",
-        ) as f:
-            pickle.dump(param_dict, f)
-
-        print("Parameters:")
-        print(param_dict, flush=True)
-
         exp.task.train(*preset.get_train_data())
         exp.task.test(*preset.get_test_data())
-
-        exp_results = exp.solve(param_dict, args.save_training_history)
-        os.makedirs(args.output_dir, exist_ok=True)
-        results_pkl_path = os.path.join(
-            args.output_dir,
-            f"{current_time}_{preset.name}_{group_idx}_results.pkl",
+        exp_results, exp_metrics = exp.run(
+            param_dict,
+            args.plot_convergence,
+            delete_results=(not args.plot_convergence),
+            return_metrics=True,
+            metrics_repeat_times=args.test_repeat_times,
         )
-        with open(results_pkl_path, "wb") as f:
-            pickle.dump(exp_results, f)
-        print(f"  - {results_pkl_path} saved.")
+        print(f"done in ({time.time() - start_time:.2f} sec)", flush=True)
 
-        if args.test_repeat_times > 0:
-            exp_metrics = exp.get_metrics_with_repeat(
-                exp_results, args.test_repeat_times
-            )
-        else:
-            exp_metrics = exp.get_metrics_with_prob(exp_results)
+        print("  - Saving metrics...", flush=True, end=" ")
         metrics_pkl_path = os.path.join(
             args.output_dir,
-            f"{current_time}_{preset.name}_{group_idx}_metrics.pkl",
+            f"{run_name}_{preset.name}_{group_idx}_metrics.pkl",
         )
         with open(metrics_pkl_path, "wb") as f:
             pickle.dump(exp_metrics, f)
-        print(f"  - {metrics_pkl_path} saved.")
+        print(f"done in ({time.time() - start_time:.2f} sec)", flush=True)
+        print(f"    saved: {metrics_pkl_path}", flush=True)
 
-        print("Drawing plots ...", flush=True)
+        # Plot and save metrics (I_alpha and err, by gamma, if applicable)
+        assert exp_metrics is not None, "exp_metrics should not be None"
+        if len(exp_metrics) < 2:
+            print("  - Skipping plotting by gamma due to insufficient params.")
+        else:
+            print("  - Plotting I_alpha ...", flush=True, end=" ")
+            start_time = time.time()
+            I_alpha_pdf_path = os.path.join(
+                args.output_dir,
+                f"{run_name}_{preset.name}_{group_idx}_I_alpha.pdf",
+            )
+            plot_metrics(
+                exp_metrics,
+                "I_alpha",
+                save_path=I_alpha_pdf_path,
+                color=args.colors,
+                figsize=args.figsize,
+            )
+            print(f"done in ({time.time() - start_time:.2f} sec)", flush=True)
+            print(f"    saved: {I_alpha_pdf_path}", flush=True)
 
-        I_alpha_pdf_path = os.path.join(
-            args.output_dir,
-            f"{current_time}_{preset.name}_{group_idx}_Ialpha.pdf",
-        )
-        plot_metrics(exp_metrics, "I_alpha", save_path=I_alpha_pdf_path)
-        print(f"  - {I_alpha_pdf_path} saved.")
+            print("  - Plotting err ...", flush=True, end=" ")
+            start_time = time.time()
+            err_pdf_path = os.path.join(
+                args.output_dir,
+                f"{run_name}_{preset.name}_{group_idx}_err.pdf",
+            )
+            plot_metrics(
+                exp_metrics,
+                "err",
+                save_path=err_pdf_path,
+                color=args.colors,
+                figsize=args.figsize,
+            )
+            print(f"done in ({time.time() - start_time:.2f} sec)", flush=True)
+            print(f"    saved: {err_pdf_path}", flush=True)
 
-        err_pdf_path = os.path.join(
-            args.output_dir,
-            f"{current_time}_{preset.name}_{group_idx}_err.pdf",
-        )
-        plot_metrics(exp_metrics, "err", save_path=err_pdf_path)
-        print(f"  - {err_pdf_path} saved.")
-
-        if args.save_training_history:
+        # Plot and save convergence traces (if applicable)
+        if args.plot_convergence:
+            assert exp_results is not None, "exp_results should not be None"
+            print("  - Plotting convergence traces ...", flush=True, end=" ")
+            start_time = time.time()
             I_alpha_trace_pdf_path = os.path.join(
                 args.output_dir,
-                f"{current_time}_{preset.name}_{group_idx}_Ialpha_trace.pdf",
+                f"{run_name}_{preset.name}_{group_idx}_I_alpha_trace.pdf",
             )
             plot_convergence(
-                exp_results, "I_alpha", save_path=I_alpha_trace_pdf_path
+                exp_results,
+                "I_alpha",
+                save_path=I_alpha_trace_pdf_path,
+                color=args.colors,
+                figsize=args.figsize,
             )
-            print(f"  - {I_alpha_trace_pdf_path} saved.")
+            print(f"done in ({time.time() - start_time:.2f} sec)", flush=True)
+            print(f"    saved: {I_alpha_trace_pdf_path}", flush=True)
 
+            print("  - Plotting err traces ...", flush=True, end=" ")
+            start_time = time.time()
             err_trace_pdf_path = os.path.join(
                 args.output_dir,
-                f"{current_time}_{preset.name}_{group_idx}_err_trace.pdf",
+                f"{run_name}_{preset.name}_{group_idx}_err_trace.pdf",
             )
-            plot_convergence(exp_results, "err", save_path=err_trace_pdf_path)
-            print(f"  - {err_trace_pdf_path} saved.")
+            plot_convergence(
+                exp_results,
+                "err",
+                save_path=err_trace_pdf_path,
+                color=args.colors,
+                figsize=args.figsize,
+            )
+            print(f"done in ({time.time() - start_time:.2f} sec)", flush=True)
+            print(f"    saved: {err_trace_pdf_path}", flush=True)
 
-        print(f"Group {group_idx + 1} done.", flush=True)
+        # Clean up
+        print("  - Cleaning up...", flush=True, end=" ")
+        start_time = time.time()
+        del exp_metrics
+        del exp_results
+        del exp
+        gc.collect()
+        print(f"done in ({time.time() - start_time:.2f} sec)", flush=True)
 
     print("All done!")
 
@@ -179,7 +256,21 @@ if __name__ == "__main__":
 
     parser.add_argument("--thr_finding_granularity", type=int, default=200)
     parser.add_argument("--test_repeat_times", type=int, default=10000)
-    parser.add_argument("--save_training_history", action="store_true")
+
+    parser.add_argument("--plot_convergence", action="store_true")
+
+    parser.add_argument(
+        "--colors",
+        type=str,
+        action="append",
+        default=plotting_default_colors,
+    )
+    parser.add_argument(
+        "--figsize",
+        type=float,
+        nargs=2,
+        default=plotting_default_figsize,
+    )
 
     parser.add_argument("--preset", type=str, required=True)
     parser.add_argument("--output_dir", type=str, default="output")
