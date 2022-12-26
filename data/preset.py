@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import List, Tuple, Type
+from typing import Tuple, Type
 
 import numpy as np
 

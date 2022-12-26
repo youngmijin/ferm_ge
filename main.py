@@ -9,7 +9,7 @@ from typing import Dict, List
 import numpy as np
 
 from data import Preset
-from ferm_ge import Experiment, plot_line
+from ferm_ge import Experiment, plot_convergence, plot_metrics
 
 
 def versatile_float(s: str) -> List[float]:
@@ -81,16 +81,15 @@ def main(args):
         exp.task.train(*preset.get_train_data())
         exp.task.test(*preset.get_test_data())
 
-        exp_results = exp.solve(param_dict)
+        exp_results = exp.solve(param_dict, args.save_training_history)
         os.makedirs(args.output_dir, exist_ok=True)
-        with open(
-            os.path.join(
-                args.output_dir,
-                f"{current_time}_{preset.name}_{group_idx}_results.pkl",
-            ),
-            "wb",
-        ) as f:
+        results_pkl_path = os.path.join(
+            args.output_dir,
+            f"{current_time}_{preset.name}_{group_idx}_results.pkl",
+        )
+        with open(results_pkl_path, "wb") as f:
             pickle.dump(exp_results, f)
+        print(f"  - {results_pkl_path} saved.")
 
         if args.test_repeat_times > 0:
             exp_metrics = exp.get_metrics_with_repeat(
@@ -98,35 +97,48 @@ def main(args):
             )
         else:
             exp_metrics = exp.get_metrics_with_prob(exp_results)
-        with open(
-            os.path.join(
-                args.output_dir,
-                f"{current_time}_{preset.name}_{group_idx}_metrics.pkl",
-            ),
-            "wb",
-        ) as f:
+        metrics_pkl_path = os.path.join(
+            args.output_dir,
+            f"{current_time}_{preset.name}_{group_idx}_metrics.pkl",
+        )
+        with open(metrics_pkl_path, "wb") as f:
             pickle.dump(exp_metrics, f)
+        print(f"  - {metrics_pkl_path} saved.")
 
-        print("Drawing plots ...", flush=True, end=" ")
+        print("Drawing plots ...", flush=True)
 
-        plot_line(
-            exp_metrics,
-            "I_alpha",
-            save_path=os.path.join(
-                args.output_dir,
-                f"{current_time}_{preset.name}_{group_idx}_Ialpha.pdf",
-            ),
+        I_alpha_pdf_path = os.path.join(
+            args.output_dir,
+            f"{current_time}_{preset.name}_{group_idx}_Ialpha.pdf",
         )
-        plot_line(
-            exp_metrics,
-            "err",
-            save_path=os.path.join(
-                args.output_dir,
-                f"{current_time}_{preset.name}_{group_idx}_err.pdf",
-            ),
-        )
+        plot_metrics(exp_metrics, "I_alpha", save_path=I_alpha_pdf_path)
+        print(f"  - {I_alpha_pdf_path} saved.")
 
-        print(f"group {group_idx + 1} done.", flush=True)
+        err_pdf_path = os.path.join(
+            args.output_dir,
+            f"{current_time}_{preset.name}_{group_idx}_err.pdf",
+        )
+        plot_metrics(exp_metrics, "err", save_path=err_pdf_path)
+        print(f"  - {err_pdf_path} saved.")
+
+        if args.save_training_history:
+            I_alpha_trace_pdf_path = os.path.join(
+                args.output_dir,
+                f"{current_time}_{preset.name}_{group_idx}_Ialpha_trace.pdf",
+            )
+            plot_convergence(
+                exp_results, "I_alpha", save_path=I_alpha_trace_pdf_path
+            )
+            print(f"  - {I_alpha_trace_pdf_path} saved.")
+
+            err_trace_pdf_path = os.path.join(
+                args.output_dir,
+                f"{current_time}_{preset.name}_{group_idx}_err_trace.pdf",
+            )
+            plot_convergence(exp_results, "err", save_path=err_trace_pdf_path)
+            print(f"  - {err_trace_pdf_path} saved.")
+
+        print(f"Group {group_idx + 1} done.", flush=True)
 
     print("All done!")
 
@@ -167,6 +179,7 @@ if __name__ == "__main__":
 
     parser.add_argument("--thr_finding_granularity", type=int, default=200)
     parser.add_argument("--test_repeat_times", type=int, default=10000)
+    parser.add_argument("--save_training_history", action="store_true")
 
     parser.add_argument("--preset", type=str, required=True)
     parser.add_argument("--output_dir", type=str, default="output")

@@ -1,4 +1,5 @@
 import multiprocessing as mp
+import time
 from dataclasses import dataclass
 from multiprocessing.pool import Pool
 from typing import Dict, List, Optional, Tuple, Type
@@ -56,6 +57,7 @@ class Experiment:
     def _solve(
         self,
         param: Dict[str, float],
+        collect_ge_history: bool,
         I_alpha_cache: List[float],
         err_cache: List[float],
     ) -> Tuple[FrozenKey, GEFairResult]:
@@ -86,12 +88,15 @@ class Experiment:
             nu,
             r,
             gamma,
+            collect_ge_history,
         )
 
         return key, result
 
     def solve(
-        self, params: Dict[str, List[float]]
+        self,
+        params: Dict[str, List[float]],
+        collect_ge_history: bool = False,
     ) -> Dict[FrozenKey, GEFairResult]:
         """Solve the FERM-GE problems with given parameters"""
 
@@ -129,15 +134,31 @@ class Experiment:
 
         mp_args = []
         for param in params_comb:
-            mp_args.append((param, *ge_cache[param["alpha"]][param["r"]]))
+            mp_args.append(
+                (
+                    param,
+                    collect_ge_history,
+                    *ge_cache[param["alpha"]][param["r"]],
+                )
+            )
 
         results: Dict[FrozenKey, GEFairResult] = {}
-        pool = Pool(processes=max(mp.cpu_count() - 4, 1))
-        pbar = tqdm.tqdm(total=len(mp_args), desc="Solving FERM-GE problems...")
-        for key, result in pool.starmap(self._solve, mp_args):
+        if len(mp_args) == 1:
+            print("Solving FERM-GE problem...", end=" ", flush=True)
+            start_time = time.time()
+            key, result = self._solve(*mp_args[0])
+            print(f"done ({time.time() - start_time:.2f} sec)", flush=True)
             results[key] = result
-            pbar.update()
-        pbar.close()
+        else:
+            pbar = tqdm.tqdm(
+                total=len(mp_args),
+                desc="Solving FERM-GE problems...",
+            )
+            pool = Pool(processes=min(max(mp.cpu_count() - 4, 1), len(mp_args)))
+            for key, result in pool.starmap(self._solve, mp_args):
+                results[key] = result
+                pbar.update()
+            pbar.close()
 
         return results
 

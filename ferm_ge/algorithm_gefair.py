@@ -1,15 +1,23 @@
 import ctypes
 import os
+import time
 from dataclasses import dataclass
 from typing import Dict, List
+
+import numpy as np
+import numpy.ctypeslib as npct
+
+import_time: str = time.strftime("%Y-%m-%d_%H-%M-%S", time.localtime())
 
 
 @dataclass
 class GEFairResult:
     T: int
     D_bar: Dict[float, int]
-    lambda_bar: List[float]
-    hypothesis_history: List[float]
+    lambda_bar: np.ndarray
+    hypothesis_history: np.ndarray
+    I_alpha_history: np.ndarray
+    err_history: np.ndarray
 
 
 class GEFAIR_RESULT(ctypes.Structure):
@@ -21,6 +29,8 @@ GEFAIR_RESULT._fields_ = [
     ("D_bar", ctypes.POINTER(ctypes.c_size_t)),
     ("lambda_bar", ctypes.POINTER(ctypes.c_double)),
     ("hypothesis_history", ctypes.POINTER(ctypes.c_double)),
+    ("I_alpha_history", ctypes.POINTER(ctypes.c_double)),
+    ("err_history", ctypes.POINTER(ctypes.c_double)),
 ]
 
 
@@ -29,7 +39,7 @@ class GEFairSolver:
         os.path.dirname(__file__), "algorithm_gefair_impl.cpp"
     )
     lib_path = os.path.join(
-        os.path.dirname(__file__), "algorithm_gefair_impl.so"
+        os.path.dirname(__file__), f"algorithm_gefair_impl_{import_time}.so"
     )
 
     def __init__(self):
@@ -45,6 +55,7 @@ class GEFairSolver:
             ctypes.c_double,
             ctypes.c_double,
             ctypes.c_double,
+            ctypes.c_bool,
         ]
         self.lib.solve_gefair.restype = ctypes.c_void_p
 
@@ -61,6 +72,7 @@ class GEFairSolver:
         nu: float,
         r: float,
         gamma: float,
+        collect_ge_history: bool = False,
     ) -> GEFairResult:
         result_struct_p = self.lib.solve_gefair(
             ctypes.c_size_t(len(thr_candidates)),
@@ -72,6 +84,7 @@ class GEFairSolver:
             ctypes.c_double(nu),
             ctypes.c_double(r),
             ctypes.c_double(gamma),
+            ctypes.c_bool(collect_ge_history),
         )
         result_struct = GEFAIR_RESULT.from_address(result_struct_p)
         result = GEFairResult(
@@ -81,14 +94,24 @@ class GEFairSolver:
                 for i, t in enumerate(thr_candidates)
                 if result_struct.D_bar[i] != 0
             },
-            lambda_bar=[
-                result_struct.lambda_bar[i] for i in range(result_struct.T)
-            ],
-            hypothesis_history=[
-                result_struct.hypothesis_history[i]
-                for i in range(result_struct.T)
-            ],
+            lambda_bar=npct.as_array(
+                result_struct.lambda_bar, shape=(result_struct.T,)
+            ).copy(),
+            hypothesis_history=np.empty(0),
+            I_alpha_history=np.empty(0),
+            err_history=np.empty(0),
         )
+        if collect_ge_history:
+            result.hypothesis_history = npct.as_array(
+                result_struct.hypothesis_history, shape=(result_struct.T,)
+            ).copy()
+            result.I_alpha_history = npct.as_array(
+                result_struct.I_alpha_history, shape=(result_struct.T,)
+            ).copy()
+            result.err_history = npct.as_array(
+                result_struct.err_history, shape=(result_struct.T,)
+            ).copy()
+
         self.lib.free_gefair_result(result_struct_p)
         return result
 

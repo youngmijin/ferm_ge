@@ -1,5 +1,7 @@
 from itertools import product
-from typing import Dict, FrozenSet, List, Tuple
+from typing import Dict, FrozenSet, List, Tuple, Union
+
+import numpy as np
 
 FrozenKey = FrozenSet[Tuple[str, float]]
 
@@ -18,3 +20,7 @@ def frozenkey_to_paramdict(frozenkey: FrozenKey) -> Dict[str, float]:
 
 def paramdict_to_frozenkey(paramdict: Dict[str, float]) -> FrozenKey:
     return frozenset(paramdict.items())
+
+
+def average_by_time(array: Union[np.ndarray, List[float]]) -> np.ndarray:
+    return np.divide(np.cumsum(array), np.arange(len(array)) + 1.0)
