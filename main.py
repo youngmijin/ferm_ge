@@ -187,6 +187,8 @@ def main(args):
 
         # Plot and save convergence traces (if applicable)
         if args.plot_convergence:
+            magnify_range = (-200, 5500)
+            highlight_range = (-100000, 400000)
             assert exp_results is not None, "exp_results should not be None"
             print("  - Plotting convergence traces ...", flush=True, end=" ")
             start_time = time.time()
@@ -200,11 +202,27 @@ def main(args):
                 save_path=I_alpha_trace_pdf_path,
                 color=args.colors,
                 figsize=args.figsize,
+                highlight_range=highlight_range,
+            )
+            fig.clear()
+            plt.close(fig)
+            I_alpha_trace_jitter_pdf_path = os.path.join(
+                args.output_dir,
+                f"{run_name}_{preset.name}_{group_idx}_I_alpha_trace_jitter.pdf",
+            )
+            fig = plot_convergence(
+                exp_results,
+                "I_alpha",
+                save_path=I_alpha_trace_jitter_pdf_path,
+                color=args.colors,
+                figsize=args.figsize,
+                magnify=magnify_range,
             )
             fig.clear()
             plt.close(fig)
             print(f"done in ({time.time() - start_time:.2f} sec)", flush=True)
             print(f"    saved: {I_alpha_trace_pdf_path}", flush=True)
+            print(f"    saved: {I_alpha_trace_jitter_pdf_path}", flush=True)
 
             print("  - Plotting err traces ...", flush=True, end=" ")
             start_time = time.time()
@@ -218,11 +236,27 @@ def main(args):
                 save_path=err_trace_pdf_path,
                 color=args.colors,
                 figsize=args.figsize,
+                highlight_range=highlight_range,
+            )
+            fig.clear()
+            plt.close(fig)
+            err_trace_jitter_pdf_path = os.path.join(
+                args.output_dir,
+                f"{run_name}_{preset.name}_{group_idx}_err_trace_jitter.pdf",
+            )
+            fig = plot_convergence(
+                exp_results,
+                "err",
+                save_path=err_trace_jitter_pdf_path,
+                color=args.colors,
+                figsize=args.figsize,
+                magnify=magnify_range,
             )
             fig.clear()
             plt.close(fig)
             print(f"done in ({time.time() - start_time:.2f} sec)", flush=True)
             print(f"    saved: {err_trace_pdf_path}", flush=True)
+            print(f"    saved: {err_trace_jitter_pdf_path}", flush=True)
 
         # Clean up
         print("  - Cleaning up...", flush=True, end=" ")

@@ -127,6 +127,8 @@ def plot_convergence(
     save_path: Optional[str] = None,
     sampling_threshold: Optional[int] = 2000000,
     sampling_exclude_initial: int = 500000,
+    magnify: Optional[Tuple[float, float]] = None,
+    highlight_range: Optional[Tuple[float, float]] = None,
 ) -> Figure:
     """Plot trace of metrics during training, using time-axis averaging"""
 
@@ -158,6 +160,9 @@ def plot_convergence(
     if len(experiments_to_draw) == 0:
         print("No metrics to draw.")
         return fig
+
+    if highlight_range is not None:
+        ax.axvspan(*highlight_range, color="yellow", alpha=0.5)
 
     if type(color) == str:
         colors: List[str] = [color] * len(r_values)  # type: ignore
@@ -202,6 +207,9 @@ def plot_convergence(
 
     if len(c_values) > 1:
         ax.legend(loc="upper right")
+
+    if magnify is not None:
+        ax.set_xlim(*magnify)
 
     if title is not None:
         ax.set_title(title)
