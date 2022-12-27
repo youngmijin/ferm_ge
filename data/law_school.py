@@ -72,8 +72,8 @@ class LawSchool(Preset):
             ]
         )
 
-        self.X_train = preprocessor.fit_transform(X_train).A  # type: ignore
-        self.X_test = preprocessor.transform(X_test).A  # type: ignore
+        self.X_train = preprocessor.fit_transform(X_train)  # type: ignore
+        self.X_test = preprocessor.transform(X_test)  # type: ignore
 
         self.y_train = y_train.to_numpy()  # type: ignore
         self.y_test = y_test.to_numpy()  # type: ignore

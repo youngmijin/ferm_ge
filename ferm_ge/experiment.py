@@ -155,10 +155,12 @@ class Experiment:
             results: Dict[FrozenKey, GEFairResultSM] = {}
             metrics: Dict[FrozenKey, Metrics] = {}
 
-            available_mem = psutil.virtual_memory().available - 2 * 1024**3
             pool_max_size = max(mp.cpu_count() - 4, 1)
 
             while True:
+                available_mem = (
+                    psutil.virtual_memory().available - 2 * 1024**3
+                )
                 current_predict_mem = mem_usages.pop(0)
                 current_mp_args = [mp_args.pop(0)]
                 while len(mp_args) > 0:

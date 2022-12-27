@@ -26,12 +26,12 @@ USAGE
 
 Type `main.py -h` for more options.
 Take a look at `plot.ipynb` for API usages and plotting.
-If you want a more minimal example, take a look at `mini.ipynb`.
+If you want a more minimal example instead of `main.py`, take a look at `mini.ipynb`.
 
 ---
 
 NOTE
 
-- This code is not optimized for space efficiency. It may require a lot of memory and storage.
+- This code is not optimized for space efficiency. It may require a lot of memory.
 - Running time varies depending on the parameters. It may take a few seconds to an hour.
 - Feel free to leave an issue if you have any questions.

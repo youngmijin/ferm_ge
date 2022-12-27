@@ -7,6 +7,7 @@ import pickle
 import time
 from typing import Dict, List
 
+import matplotlib.pyplot as plt
 import numpy as np
 import yaml
 from matplotlib._color_data import BASE_COLORS, CSS4_COLORS
@@ -14,6 +15,7 @@ from matplotlib._color_data import BASE_COLORS, CSS4_COLORS
 from data import Preset
 from ferm_ge import (
     Experiment,
+    frozenkey_to_paramdict,
     plot_convergence,
     plot_metrics,
     plotting_default_colors,
@@ -138,7 +140,10 @@ def main(args):
 
         # Plot and save metrics (I_alpha and err, by gamma, if applicable)
         assert exp_metrics is not None, "exp_metrics should not be None"
-        if len(exp_metrics) < 2:
+        gamma_values = set()
+        for exp_key in exp_metrics.keys():
+            gamma_values.add(frozenkey_to_paramdict(exp_key)["gamma"])
+        if len(gamma_values) < 2:
             print("  - Skipping plotting by gamma due to insufficient params.")
         else:
             print("  - Plotting I_alpha ...", flush=True, end=" ")
@@ -147,13 +152,15 @@ def main(args):
                 args.output_dir,
                 f"{run_name}_{preset.name}_{group_idx}_I_alpha.pdf",
             )
-            plot_metrics(
+            fig = plot_metrics(
                 exp_metrics,
                 "I_alpha",
                 save_path=I_alpha_pdf_path,
                 color=args.colors,
                 figsize=args.figsize,
             )
+            fig.clear()
+            plt.close(fig)
             print(f"done in ({time.time() - start_time:.2f} sec)", flush=True)
             print(f"    saved: {I_alpha_pdf_path}", flush=True)
 
@@ -163,13 +170,15 @@ def main(args):
                 args.output_dir,
                 f"{run_name}_{preset.name}_{group_idx}_err.pdf",
             )
-            plot_metrics(
+            fig = plot_metrics(
                 exp_metrics,
                 "err",
                 save_path=err_pdf_path,
                 color=args.colors,
                 figsize=args.figsize,
             )
+            fig.clear()
+            plt.close(fig)
             print(f"done in ({time.time() - start_time:.2f} sec)", flush=True)
             print(f"    saved: {err_pdf_path}", flush=True)
 
@@ -182,13 +191,15 @@ def main(args):
                 args.output_dir,
                 f"{run_name}_{preset.name}_{group_idx}_I_alpha_trace.pdf",
             )
-            plot_convergence(
+            fig = plot_convergence(
                 exp_results,
                 "I_alpha",
                 save_path=I_alpha_trace_pdf_path,
                 color=args.colors,
                 figsize=args.figsize,
             )
+            fig.clear()
+            plt.close(fig)
             print(f"done in ({time.time() - start_time:.2f} sec)", flush=True)
             print(f"    saved: {I_alpha_trace_pdf_path}", flush=True)
 
@@ -198,13 +209,15 @@ def main(args):
                 args.output_dir,
                 f"{run_name}_{preset.name}_{group_idx}_err_trace.pdf",
             )
-            plot_convergence(
+            fig = plot_convergence(
                 exp_results,
                 "err",
                 save_path=err_trace_pdf_path,
                 color=args.colors,
                 figsize=args.figsize,
             )
+            fig.clear()
+            plt.close(fig)
             print(f"done in ({time.time() - start_time:.2f} sec)", flush=True)
             print(f"    saved: {err_trace_pdf_path}", flush=True)
 

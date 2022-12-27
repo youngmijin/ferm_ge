@@ -102,7 +102,8 @@ def plot_metrics(
     if title is not None:
         ax.set_title(title)
 
-    ax.set_xlim(xmin, xmax)
+    if xmin != xmax:
+        ax.set_xlim(xmin, xmax)
 
     if save_path is not None:
         fig.savefig(save_path, bbox_inches="tight", dpi=600)
@@ -155,7 +156,6 @@ def plot_convergence(
         colors = color  # type: ignore
 
     r_values_list = sorted(list(r_values))
-    xmax = float("-inf")
     for ri, r in enumerate(r_values_list):
         for exp_key, exp_result in experiments_to_draw.items():
             param_dict = {k: v for k, v in list(exp_key)}
@@ -177,15 +177,12 @@ def plot_convergence(
                 things_to_plot = average_by_time(exp_result.hypothesis_history)
             assert things_to_plot is not None, "things_to_plot is None"
             ax.plot(things_to_plot, label=f"r={r}", color=colors[ri])
-            xmax = max(xmax, len(things_to_plot))
 
     if len(r_values) > 1:
         ax.legend(loc="upper right")
 
     if title is not None:
         ax.set_title(title)
-
-    ax.set_xlim(0, xmax)
 
     if save_path is not None:
         fig.savefig(save_path, bbox_inches="tight", dpi=600)
