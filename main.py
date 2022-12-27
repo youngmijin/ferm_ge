@@ -129,6 +129,7 @@ def main(args):
         print(f"done in ({time.time() - start_time:.2f} sec)", flush=True)
 
         print("  - Saving metrics...", flush=True, end=" ")
+        start_time = time.time()
         metrics_pkl_path = os.path.join(
             args.output_dir,
             f"{run_name}_{preset.name}_{group_idx}_metrics.pkl",

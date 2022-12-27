@@ -8,7 +8,7 @@ from matplotlib.figure import Figure
 
 from .algorithm_gefair import GEFairResultSM
 from .experiment import Metrics
-from .utils import FrozenKey, average_by_time
+from .utils import FrozenKey, apply_sampling, average_by_time
 
 matplotlib.rcParams["font.family"] = "serif"
 
@@ -35,14 +35,14 @@ def plot_metrics(
 ) -> Figure:
     assert metric_name in ["I_alpha", "err"]
 
-    experiments_to_draw: Dict[FrozenKey, Metrics] = {}
+    experiments_to_draw: List[FrozenKey] = []
     r_values = set()
     alpha_values = set()
     for exp_key, exp_metric in exp_metrics.items():
         param_dict = {k: v for k, v in list(exp_key)}
         if not params_filter(param_dict):
             continue
-        experiments_to_draw[exp_key] = exp_metric
+        experiments_to_draw.append(exp_key)
         r_values.add(param_dict["r"])
         alpha_values.add(param_dict["alpha"])
 
@@ -73,7 +73,9 @@ def plot_metrics(
         plot_x = []
         plot_y = []
         plot_err = []
-        for exp_key, exp_metric in experiments_to_draw.items():
+        for exp_key, exp_metric in exp_metrics.items():
+            if exp_key not in experiments_to_draw:
+                continue
             param_dict = {k: v for k, v in list(exp_key)}
             if param_dict["r"] != r:
                 continue
@@ -119,19 +121,21 @@ def plot_convergence(
     color: Union[List[str], str] = default_colors,
     title: Optional[str] = None,
     save_path: Optional[str] = None,
+    sampling_threshold: Optional[int] = 2000000,
+    sampling_exclude_initial: int = 500000,
 ) -> Figure:
     """Plot trace of metrics during training, using time-axis averaging"""
 
     assert metric_name in ["I_alpha", "err", "threshold", "hypothesis"]
 
-    experiments_to_draw: Dict[FrozenKey, GEFairResultSM] = {}
+    experiments_to_draw: List[FrozenKey] = []
     r_values = set()
     alpha_values = set()
-    for exp_key, exp_result in exp_results.items():
+    for exp_key in exp_results.keys():
         param_dict = {k: v for k, v in list(exp_key)}
         if not params_filter(param_dict):
             continue
-        experiments_to_draw[exp_key] = exp_result
+        experiments_to_draw.append(exp_key)
         r_values.add(param_dict["r"])
         alpha_values.add(param_dict["alpha"])
 
@@ -157,7 +161,9 @@ def plot_convergence(
 
     r_values_list = sorted(list(r_values))
     for ri, r in enumerate(r_values_list):
-        for exp_key, exp_result in experiments_to_draw.items():
+        for exp_key, exp_result in exp_results.items():
+            if exp_key not in experiments_to_draw:
+                continue
             param_dict = {k: v for k, v in list(exp_key)}
             if param_dict["r"] != r:
                 continue
@@ -176,7 +182,15 @@ def plot_convergence(
                 ), "hypothesis_history is None"
                 things_to_plot = average_by_time(exp_result.hypothesis_history)
             assert things_to_plot is not None, "things_to_plot is None"
-            ax.plot(things_to_plot, label=f"r={r}", color=colors[ri])
+            ax.plot(
+                *apply_sampling(
+                    things_to_plot,
+                    sampling_threshold,
+                    sampling_exclude_initial,
+                ),
+                label=f"r={r}",
+                color=colors[ri],
+            )
 
     if len(r_values) > 1:
         ax.legend(loc="upper right")

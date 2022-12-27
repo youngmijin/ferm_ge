@@ -1,5 +1,5 @@
 from itertools import product
-from typing import Dict, FrozenSet, List, Tuple, Union
+from typing import Dict, FrozenSet, List, Optional, Tuple, Union
 
 import numpy as np
 
@@ -24,6 +24,31 @@ def paramdict_to_frozenkey(paramdict: Dict[str, float]) -> FrozenKey:
 
 def average_by_time(array: Union[np.ndarray, List[float]]) -> np.ndarray:
     return np.divide(np.cumsum(array), np.arange(len(array)) + 1.0)
+
+
+def apply_sampling(
+    array: np.ndarray,
+    sampling_threshold: Optional[int],
+    sampling_exclude_initial: int = 0,
+) -> Tuple[np.ndarray, np.ndarray]:
+    assert array.ndim == 1, "array must be 1D array"
+    if sampling_threshold is None or len(array) <= sampling_threshold:
+        return np.arange(len(array)), array
+    else:
+        former_x = np.arange(sampling_exclude_initial)
+        former_y = array[:sampling_exclude_initial]
+        latter_x = np.arange(
+            sampling_exclude_initial,
+            len(array),
+            len(array) // sampling_threshold,
+        )
+        latter_y = array[
+            sampling_exclude_initial :: len(array) // sampling_threshold
+        ]
+        return (
+            np.concatenate([former_x, latter_x]),
+            np.concatenate([former_y, latter_y]),
+        )
 
 
 def predict_memory_consumption(
