@@ -62,7 +62,8 @@ def main(args):
                 [
                     1,
                     len(args.alpha),
-                    len(args.r),
+                    len(args.c),
+                    len(args.a),
                     len(args.gamma),
                     len(args.nu),
                     len(args.lambda_max),
@@ -81,7 +82,8 @@ def main(args):
     for group_idx in range(len(args.alpha)):
         param_dict: Dict[str, List[float]] = {
             "alpha": get_arg_list("alpha", group_idx),
-            "r": get_arg_list("r", group_idx),
+            "c": get_arg_list("c", group_idx),
+            "a": get_arg_list("a", group_idx),
             "gamma": get_arg_list("gamma", group_idx),
             "nu": get_arg_list("nu", group_idx),
             "lambda_max": get_arg_list("lambda_max", group_idx),
@@ -244,7 +246,13 @@ if __name__ == "__main__":
         nargs="+",
     )
     parser.add_argument(
-        "--r",
+        "--c",
+        action="append",
+        type=versatile_float,
+        nargs="+",
+    )
+    parser.add_argument(
+        "--a",
         action="append",
         type=versatile_float,
         nargs="+",

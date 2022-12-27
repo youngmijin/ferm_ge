@@ -34,11 +34,11 @@ def ge(
 
 @njit
 def ge_confmat(
-    alpha: float, r: float, tn: float, fp: float, fn: float, tp: float
+    alpha: float, c: float, a: float, tn: float, fp: float, fn: float, tp: float
 ) -> float:
     """Calculate I_alpha using given confusion matrix"""
 
-    b_stat = np.array([r, r - 1, r + 1])
+    b_stat = np.array([c, c - a, c + a])
     fraction_x = np.array(
         [
             (tn + tp) / (tn + fp + fn + tp),

@@ -36,21 +36,25 @@ def plot_metrics(
     assert metric_name in ["I_alpha", "err"]
 
     experiments_to_draw: List[FrozenKey] = []
-    r_values = set()
     alpha_values = set()
+    c_values = set()
+    a_values = set()
     for exp_key, exp_metric in exp_metrics.items():
         param_dict = {k: v for k, v in list(exp_key)}
         if not params_filter(param_dict):
             continue
         experiments_to_draw.append(exp_key)
-        r_values.add(param_dict["r"])
         alpha_values.add(param_dict["alpha"])
+        c_values.add(param_dict["c"])
+        a_values.add(param_dict["a"])
 
     if len(alpha_values) > 1:
         warnings.warn(
             f"Multiple values of alpha detected: {alpha_values}",
             UserWarning,
         )
+    if len(a_values) > 1:
+        warnings.warn(f"Multiple values of a detected: {a_values}", UserWarning)
 
     fig, ax = plt.subplots(figsize=figsize)
 
@@ -62,14 +66,14 @@ def plot_metrics(
         colors: List[str] = [color] * len(r_values)  # type: ignore
     else:
         assert len(color) >= len(
-            r_values
+            c_values
         ), "Number of colors must match or higher than the number of r values"
         colors = color  # type: ignore
 
-    r_values_list = sorted(list(r_values))
+    c_values_list = sorted(list(c_values))
     xmin = float("inf")
     xmax = float("-inf")
-    for ri, r in enumerate(r_values_list):
+    for ci, c in enumerate(c_values_list):
         plot_x = []
         plot_y = []
         plot_err = []
@@ -77,7 +81,7 @@ def plot_metrics(
             if exp_key not in experiments_to_draw:
                 continue
             param_dict = {k: v for k, v in list(exp_key)}
-            if param_dict["r"] != r:
+            if param_dict["c"] != c:
                 continue
             plot_x.append(param_dict["gamma"])
             plot_y.append(getattr(exp_metric, metric_name))
@@ -85,20 +89,20 @@ def plot_metrics(
                 plot_err.append(getattr(exp_metric, f"{metric_name}_std"))
         if len(plot_err) > 0:
             plot_err = [e * 1.96 for e in plot_err]  # 95% confidence interval
-            ax.plot(plot_x, plot_y, label=f"r={r}", color=colors[ri])
+            ax.plot(plot_x, plot_y, label=f"c={c}", color=colors[ci])
             ax.fill_between(
                 plot_x,
                 [y - e for y, e in zip(plot_y, plot_err)],  # type: ignore
                 [y + e for y, e in zip(plot_y, plot_err)],  # type: ignore
-                color=colors[ri],
+                color=colors[ci],
                 alpha=0.2,
             )
         else:
-            ax.plot(plot_x, plot_y, "o-", label=f"r={r}", color=colors[ri])
+            ax.plot(plot_x, plot_y, "o-", label=f"c={c}", color=colors[ci])
         xmin = min(xmin, min(plot_x))
         xmax = max(xmax, max(plot_x))
 
-    if len(r_values) > 1:
+    if len(c_values) > 1:
         ax.legend()
 
     if title is not None:
@@ -129,21 +133,25 @@ def plot_convergence(
     assert metric_name in ["I_alpha", "err", "threshold", "hypothesis"]
 
     experiments_to_draw: List[FrozenKey] = []
-    r_values = set()
     alpha_values = set()
+    c_values = set()
+    a_values = set()
     for exp_key in exp_results.keys():
         param_dict = {k: v for k, v in list(exp_key)}
         if not params_filter(param_dict):
             continue
         experiments_to_draw.append(exp_key)
-        r_values.add(param_dict["r"])
         alpha_values.add(param_dict["alpha"])
+        c_values.add(param_dict["c"])
+        a_values.add(param_dict["a"])
 
     if len(alpha_values) > 1:
         warnings.warn(
             f"Multiple values of alpha detected: {alpha_values}",
             UserWarning,
         )
+    if len(a_values) > 1:
+        warnings.warn(f"Multiple values of a detected: {a_values}", UserWarning)
 
     fig, ax = plt.subplots(figsize=figsize)
 
@@ -155,17 +163,17 @@ def plot_convergence(
         colors: List[str] = [color] * len(r_values)  # type: ignore
     else:
         assert len(color) >= len(
-            r_values
+            c_values
         ), "Number of colors must match or higher than the number of experiments"
         colors = color  # type: ignore
 
-    r_values_list = sorted(list(r_values))
-    for ri, r in enumerate(r_values_list):
+    c_values_list = sorted(list(c_values))
+    for ci, c in enumerate(c_values_list):
         for exp_key, exp_result in exp_results.items():
             if exp_key not in experiments_to_draw:
                 continue
             param_dict = {k: v for k, v in list(exp_key)}
-            if param_dict["r"] != r:
+            if param_dict["c"] != c:
                 continue
             things_to_plot: Optional[np.ndarray] = None
             if metric_name == "I_alpha":
@@ -188,11 +196,11 @@ def plot_convergence(
                     sampling_threshold,
                     sampling_exclude_initial,
                 ),
-                label=f"r={r}",
-                color=colors[ri],
+                label=f"c={c}",
+                color=colors[ci],
             )
 
-    if len(r_values) > 1:
+    if len(c_values) > 1:
         ax.legend(loc="upper right")
 
     if title is not None:

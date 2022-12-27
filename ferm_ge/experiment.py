@@ -48,13 +48,15 @@ class Experiment:
         """
 
         assert "alpha" in param, "alpha must be in params"
-        assert "r" in param, "r must be in params"
+        assert "c" in param, "c must be in params"
+        assert "a" in param, "a must be in params"
         assert "gamma" in param, "gamma must be in params"
         assert "nu" in param, "nu must be in params"
         assert "lambda_max" in param, "lambda_max must be in params"
 
         alpha = param["alpha"]
-        r = param["r"]
+        c = param["c"]
+        a = param["a"]
         gamma = param["gamma"]
         nu = param["nu"]
         lambda_max = param["lambda_max"]
@@ -68,7 +70,8 @@ class Experiment:
             alpha,
             lambda_max,
             nu,
-            r,
+            c,
+            a,
             gamma,
             collect_ge_history,
         )
@@ -103,18 +106,22 @@ class Experiment:
             err: float = (fp + fn) / (tn + fp + fn + tp)
             err_confmat_cache[thr] = (err, (tn, fp, fn, tp))
 
-        ge_cache: Dict[float, Dict[float, Tuple[List[float], List[float]]]] = {}
-        for alpha in params["alpha"]:
+        ge_cache: Dict[
+            float, Dict[float, Dict[float, Tuple[List[float], List[float]]]]
+        ] = {}
+        for alpha in set(params["alpha"]):
             ge_cache[alpha] = {}
-            for r in params["r"]:
-                I_alpha_list = []
-                err_list = []
-                for thr in self.thr_candidates:
-                    err, (tn, fp, fn, tp) = err_confmat_cache[thr]
-                    I_alpha = ge_confmat(alpha, r, tn, fp, fn, tp)
-                    I_alpha_list.append(I_alpha)
-                    err_list.append(err)
-                ge_cache[alpha][r] = (I_alpha_list, err_list)
+            for c in set(params["c"]):
+                ge_cache[alpha][c] = {}
+                for a in set(params["a"]):
+                    I_alpha_list = []
+                    err_list = []
+                    for thr in self.thr_candidates:
+                        err, (tn, fp, fn, tp) = err_confmat_cache[thr]
+                        I_alpha = ge_confmat(alpha, c, a, tn, fp, fn, tp)
+                        I_alpha_list.append(I_alpha)
+                        err_list.append(err)
+                    ge_cache[alpha][c][a] = (I_alpha_list, err_list)
 
         mem_usages = []
         mp_args = []
@@ -123,7 +130,7 @@ class Experiment:
                 (
                     param,
                     collect_ge_history,
-                    *ge_cache[param["alpha"]][param["r"]],
+                    *ge_cache[param["alpha"]][param["c"]][param["a"]],
                 )
             )
             mem_usages.append(
@@ -132,7 +139,8 @@ class Experiment:
                     param["alpha"],
                     param["lambda_max"],
                     param["nu"],
-                    param["r"],
+                    param["c"],
+                    param["a"],
                     param["gamma"],
                     collect_ge_history,
                 )

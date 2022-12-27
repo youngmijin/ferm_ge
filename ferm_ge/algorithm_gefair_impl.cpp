@@ -49,29 +49,29 @@ inline double find_threshold(map<double, pair<double, double>> *ge_err_cache,
   return thr_of_lambda;
 }
 
-inline double get_Iup(double alpha, double r) {
+inline double get_Iup(double alpha, double c, double a) {
   // Calculate Iup (reference: section 5 in the paper)
-  double rr = (r + 1) / (r - 1);
+  double ca = (c + a) / (c - a);
   if (alpha == 0)
-    return log(rr);
+    return log(ca);
   else if (alpha == 1)
-    return rr * log(rr);
+    return ca * log(ca);
   else
-    return (pow(rr, alpha) - 1) / abs(alpha * (alpha - 1));
+    return (pow(ca, alpha) - 1) / abs(alpha * (alpha - 1));
 }
 
 extern "C" GEFAIR_RESULT *solve_gefair(size_t thr_candidates_size,
                                        double *thr_candidates,
                                        double *I_alpha_cache, double *err_cache,
                                        double alpha, double lambda_max,
-                                       double nu, double r, double gamma,
-                                       bool collect_ge_history) {
+                                       double nu, double c, double a,
+                                       double gamma, bool collect_ge_history) {
   /*
     Solve GE-Fairness (reference: algorithm 1 at section 5 in the paper)
     Note that hypothesis is a float value in this implementation.
   */
 
-  double A_alpha = 1 + lambda_max * (gamma + get_Iup(alpha, r));
+  double A_alpha = 1 + lambda_max * (gamma + get_Iup(alpha, c, a));
   double B = gamma * lambda_max;
 
   size_t T = 4 * A_alpha * A_alpha * log(2) / (nu * nu);

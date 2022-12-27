@@ -108,6 +108,7 @@ class GEFairSolverC:
             ctypes.c_double,
             ctypes.c_double,
             ctypes.c_double,
+            ctypes.c_double,
             ctypes.c_bool,
         ]
         self.lib.solve_gefair.restype = ctypes.c_void_p
@@ -123,7 +124,8 @@ class GEFairSolverC:
         alpha: float,
         lambda_max: float,
         nu: float,
-        r: float,
+        c: float,
+        a: float,
         gamma: float,
         collect_ge_history: bool = False,
     ) -> GEFairResultSM:
@@ -135,7 +137,8 @@ class GEFairSolverC:
             ctypes.c_double(alpha),
             ctypes.c_double(lambda_max),
             ctypes.c_double(nu),
-            ctypes.c_double(r),
+            ctypes.c_double(c),
+            ctypes.c_double(a),
             ctypes.c_double(gamma),
             ctypes.c_bool(collect_ge_history),
         )

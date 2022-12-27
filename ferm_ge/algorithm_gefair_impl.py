@@ -64,20 +64,20 @@ def find_threshold(
     return thr_of_lambda
 
 
-def get_Iup(alpha: float, r: float) -> float:
+def get_Iup(alpha: float, c: float, a: float) -> float:
     """
     Calculate Iup (reference: section 5 in the paper)
     """
 
-    rr = (r + 1) / (r - 1)
+    ca = (c + a) / (c - a)
 
     if alpha == 0:
-        return float(np.log(rr))
+        return float(np.log(ca))
 
     if alpha == 1:
-        return float(rr * np.log(rr))
+        return float(ca * np.log(ca))
 
-    return float((np.power(rr, alpha) - 1) / np.abs((alpha - 1) * alpha))
+    return float((np.power(ca, alpha) - 1) / np.abs((alpha - 1) * alpha))
 
 
 def solve_gefair(
@@ -87,7 +87,8 @@ def solve_gefair(
     alpha: float,
     lambda_max: float,
     nu: float,
-    r: float,
+    c: float,
+    a: float,
     gamma: float,
     collect_ge_history: bool = False,
 ):
@@ -96,7 +97,7 @@ def solve_gefair(
     Note that hypothesis is a float value in this implementation.
     """
 
-    A_alpha: float = 1 + lambda_max * (gamma + get_Iup(alpha, r))
+    A_alpha: float = 1 + lambda_max * (gamma + get_Iup(alpha, c, a))
     B: float = gamma * lambda_max
 
     T: int = int(4 * (A_alpha**2) * np.log(2) / (nu**2))

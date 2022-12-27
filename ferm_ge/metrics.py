@@ -50,7 +50,8 @@ def _calc_metrics_with_prob(
     for exp_key, exp_result in exp_results.items():
         param_dict = frozenkey_to_paramdict(exp_key)
         alpha = param_dict["alpha"]
-        r = param_dict["r"]
+        c = param_dict["c"]
+        a = param_dict["a"]
 
         thr_prob = {
             thr: count / exp_result.T for thr, count in exp_result.D_bar.items()
@@ -62,7 +63,7 @@ def _calc_metrics_with_prob(
             confmat = task.predict_test_with_threshold(thr)[1]
             tn, fp, fn, tp = confmat.astype(float)
             err: float = (fp + fn) / (tn + fp + fn + tp)
-            I_alpha: float = ge_confmat(alpha, r, tn, fp, fn, tp)
+            I_alpha: float = ge_confmat(alpha, c, a, tn, fp, fn, tp)
             test_I_alpha += I_alpha * prob
             test_err += err * prob
 
@@ -86,7 +87,8 @@ def _calc_metrics_with_repeat(
 
     param_dict = frozenkey_to_paramdict(exp_key)
     alpha = param_dict["alpha"]
-    r = param_dict["r"]
+    c = param_dict["c"]
+    a = param_dict["a"]
 
     thr_prob = {
         thr: count / exp_result.T for thr, count in exp_result.D_bar.items()
@@ -99,7 +101,7 @@ def _calc_metrics_with_repeat(
         confmat = task.predict_test_with_threshold(thr)[1]
         tn, fp, fn, tp = confmat.astype(float)
         err: float = (fp + fn) / (tn + fp + fn + tp)
-        I_alpha: float = ge_confmat(alpha, r, tn, fp, fn, tp)
+        I_alpha: float = ge_confmat(alpha, c, a, tn, fp, fn, tp)
         ge_err_cache[thr] = (I_alpha, err)
 
     test_I_alpha = []

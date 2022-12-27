@@ -56,7 +56,8 @@ def predict_memory_consumption(
     alpha: float,
     lambda_max: float,
     nu: float,
-    r: float,
+    c: float,
+    a: float,
     gamma: float,
     collect_ge_history: bool,
 ) -> float:
@@ -65,11 +66,11 @@ def predict_memory_consumption(
     """
 
     if alpha == 0:
-        I_max = np.log((r + 1) / (r - 1))
+        I_max = np.log((c + a) / (c - a))
     elif alpha == 1:
-        I_max = (r + 1) / (r - 1) * np.log((r + 1) / (r - 1))
+        I_max = (c + a) / (c - a) * np.log((c + a) / (c - a))
     else:
-        I_max = (np.power((r + 1) / (r - 1), alpha) - 1) / np.abs(
+        I_max = (np.power((c + a) / (c - a), alpha) - 1) / np.abs(
             (alpha - 1) * alpha
         )
     A_alpha = 1 + lambda_max * (gamma + I_max)
