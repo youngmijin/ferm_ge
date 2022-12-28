@@ -1,6 +1,6 @@
 import warnings
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
 import numpy as np
 
@@ -16,52 +16,40 @@ warnings.warn(
 
 @dataclass
 class GEFairResult:
-    T: int
-    D_bar: Dict[float, int]
-    lambda_bar: np.ndarray
-    hypothesis_history: Optional[np.ndarray]
-    I_alpha_history: Optional[np.ndarray]
-    err_history: Optional[np.ndarray]
+    T: int  # number of iterations
+    D_bar_stats: Dict[float, int]  # number of times each threshold is selected
+    lambda_hist: np.ndarray  # history of lambda values
+    D_bar: Optional[np.ndarray]  # history of D_bar values
+    I_alpha_bar: Optional[np.ndarray]  # history of time-averaged I_alpha values
+    err_bar: Optional[np.ndarray]  # history of time-averaged err values
 
 
-def calc_L(
-    ge_err_cache: Dict[float, Tuple[float, float]],
-    threshold: float,
-    lambda_: float,
-    gamma: float,
-) -> float:
-    """
-    Find Lagrangian with given lambda and threshold
-    """
-
-    I_alpha, err = ge_err_cache[threshold]
-    return err + lambda_ * (I_alpha - gamma)
+def D_bar_stats_list_to_dict(
+    D_bar_stats_list: np.ndarray, thr_candidates: List[float]
+) -> Dict[float, int]:
+    return {thr: D_bar_stats_list[i] for i, thr in enumerate(thr_candidates)}
 
 
-def find_threshold(
-    ge_err_cache: Dict[float, Tuple[float, float]],
-    thr_cache: Dict[float, float],
+def find_threshold_idx(
+    I_alpha_cache: List[float],
+    err_cache: List[float],
     thr_candidates: List[float],
     lambda_: float,
     gamma: float,
-) -> float:
+) -> int:
     """
     Find threshold for a given lambda value (the "oracle")
     """
 
-    if lambda_ in thr_cache:
-        return thr_cache[lambda_]
-
-    thr_of_lambda = 0.0
+    thri_of_lambda = 0
     min_L_value = float("inf")
-    for thr in thr_candidates:
-        L_value = calc_L(ge_err_cache, thr, lambda_, gamma)
+    for i in range(len(thr_candidates)):
+        L_value = err_cache[i] + lambda_ * (I_alpha_cache[i] - gamma)
         if L_value < min_L_value:
             min_L_value = L_value
-            thr_of_lambda = thr
+            thri_of_lambda = i
 
-    thr_cache[lambda_] = thr_of_lambda
-    return thr_of_lambda
+    return thri_of_lambda
 
 
 def get_Iup(alpha: float, c: float, a: float) -> float:
@@ -80,6 +68,116 @@ def get_Iup(alpha: float, c: float, a: float) -> float:
     return float((np.power(ca, alpha) - 1) / np.abs((alpha - 1) * alpha))
 
 
+def solve_gefair_loop_traced(
+    T: int,
+    thr_candidates: List[float],
+    I_alpha_cache: List[float],
+    err_cache: List[float],
+    lambda_max: float,
+    w0_mult_cache: List[float],
+    w1_mult_cache: List[float],
+    lambda_0_thri: int,
+    lambda_1_thri: int,
+) -> GEFairResult:
+    dist = np.random.default_rng()
+
+    w0: float = 1.0
+    w1: float = 1.0
+
+    lambda_0: float = 0.0
+    lambda_1: float = lambda_max
+
+    D_bar_stats = np.zeros((len(thr_candidates),), dtype=int)
+    lambda_hist = np.zeros((T,), dtype=float)
+    D_bar = np.zeros((T,), dtype=float)
+    I_alpha_bar = np.zeros((T,), dtype=float)
+    err_bar = np.zeros((T,), dtype=float)
+
+    D_hist_sum = 0.0
+    I_alpha_hist_sum = 0.0
+    err_hist_sum = 0.0
+    for t in range(T):
+        # 1. Destiny chooses lambda_t
+        w0_selected = dist.random() < (w0 / (w0 + w1))
+        lambda_t: float = lambda_0 if w0_selected else lambda_1
+
+        # 2. The learner chooses a hypothesis (threshold(float) in this case)
+        thri_t: int = lambda_0_thri if w0_selected else lambda_1_thri
+
+        # 3. Destiny updates the weight vector (w0, w1)
+        w0 = w0 * w0_mult_cache[thri_t]
+        w1 = w1 * w1_mult_cache[thri_t]
+
+        # 4. Save the results
+        D_bar_stats[thri_t] += 1
+        lambda_hist[t] = lambda_t
+
+        D_hist_sum += thr_candidates[thri_t]
+        I_alpha_hist_sum += I_alpha_cache[thri_t]
+        err_hist_sum += err_cache[thri_t]
+
+        D_bar[t] = D_hist_sum / (t + 1)
+        I_alpha_bar[t] = I_alpha_hist_sum / (t + 1)
+        err_bar[t] = err_hist_sum / (t + 1)
+
+    return GEFairResult(
+        T=T,
+        D_bar_stats=D_bar_stats_list_to_dict(D_bar_stats, thr_candidates),
+        lambda_hist=lambda_hist,
+        D_bar=D_bar,
+        I_alpha_bar=I_alpha_bar,
+        err_bar=err_bar,
+    )
+
+
+def solve_gefair_loop(
+    T: int,
+    thr_candidates: List[float],
+    lambda_max: float,
+    w0_mult_cache: List[float],
+    w1_mult_cache: List[float],
+    lambda_0_thri: int,
+    lambda_1_thri: int,
+) -> GEFairResult:
+    dist = np.random.default_rng()
+
+    w0: float = 1.0
+    w1: float = 1.0
+
+    lambda_0: float = 0.0
+    lambda_1: float = lambda_max
+
+    D_bar_stats = np.zeros((len(thr_candidates),), dtype=int)
+    lambda_hist = np.zeros((T,), dtype=float)
+
+    # Implementation hack: use the "index number" of the threshold instead of
+    #                      the threshold itself throughout the algorithm
+    for t in range(T):
+        # 1. Destiny chooses lambda_t
+        w0_selected = dist.random() < (w0 / (w0 + w1))
+        lambda_t: float = lambda_0 if w0_selected else lambda_1
+
+        # 2. The learner chooses a hypothesis (threshold(float) in this case)
+        thri_t: int = lambda_0_thri if w0_selected else lambda_1_thri
+
+        # 3. Destiny updates the weight vector (w0, w1)
+        w0 = w0 * w0_mult_cache[thri_t]
+        w1 = w1 * w1_mult_cache[thri_t]
+
+        # 4. Save the results
+        D_bar_stats[thri_t] += 1
+        lambda_hist[t] = lambda_t
+
+    return GEFairResult(
+        T=T,
+        D_bar_stats=D_bar_stats_list_to_dict(D_bar_stats, thr_candidates),
+        lambda_hist=lambda_hist,
+        D_bar=None,
+        I_alpha_bar=None,
+        err_bar=None,
+    )
+
+
 def solve_gefair(
     thr_candidates: List[float],
     I_alpha_cache: List[float],
@@ -90,7 +188,7 @@ def solve_gefair(
     c: float,
     a: float,
     gamma: float,
-    collect_ge_history: bool = False,
+    collect_ge_history,
 ):
     """
     Solve GE-Fairness (reference: algorithm 1 at section 5 in the paper)
@@ -103,81 +201,46 @@ def solve_gefair(
     T: int = int(4 * (A_alpha**2) * np.log(2) / (nu**2))
     kappa: float = nu / (2 * A_alpha)
 
-    # Implementation hack: cache the results of the oracle
-    thr_cache: Dict[float, float] = {}
-
-    # Implementation hack: change form of the I_alpha and error cache to make it
-    # easier to use
-    ge_err_cache: Dict[float, Tuple[float, float]] = {}
-    for thr, I_alpha, err in zip(thr_candidates, I_alpha_cache, err_cache):
-        ge_err_cache[thr] = (I_alpha, err)
-
     # Implementation hack: avoid repeated calculation of multiplicative factors
-    w0_mult_cache: Dict[float, float] = {}
-    w1_mult_cache: Dict[float, float] = {}
-    for thr in thr_candidates:
-        w0_mult_cache[thr] = np.power(
+    w0_mult_cache: List[float] = []
+    w1_mult_cache: List[float] = []
+    for i in range(len(thr_candidates)):
+        w0_mult_cache[i] = np.power(
             1.0 + kappa,
-            (calc_L(ge_err_cache, thr, 0.0, gamma) + B) / A_alpha,
+            (err_cache[i] + B) / A_alpha,
         )
-        w1_mult_cache[thr] = np.power(
+        w1_mult_cache[i] = np.power(
             1.0 + kappa,
-            (calc_L(ge_err_cache, thr, lambda_max, gamma) + B) / A_alpha,
+            ((err_cache[i] + lambda_max * (I_alpha_cache[i] - gamma)) + B)
+            / A_alpha,
         )
 
-    dist = np.random.default_rng()
+    lambda_0_thri: int = find_threshold_idx(
+        I_alpha_cache, err_cache, thr_candidates, 0.0, gamma
+    )
+    lambda_1_thri: int = find_threshold_idx(
+        I_alpha_cache, err_cache, thr_candidates, lambda_max, gamma
+    )
 
-    w0: float = 1.0
-    w1: float = 1.0
-
-    lambda_0: float = 0.0
-    lambda_1: float = lambda_max
-
-    hypothesis_history = np.zeros((T,), dtype=float)
-    lambda_bar = np.zeros((T,), dtype=float)
-
-    for t in range(T):
-        # 1. Destiny chooses lambda_t
-        w0_prob_t = w0 / (w0 + w1)
-        lambda_t: float = lambda_0 if dist.random() < w0_prob_t else lambda_1
-
-        # 2. The learner chooses a hypothesis (threshold(float) in this case)
-        thr_t = find_threshold(
-            ge_err_cache, thr_cache, thr_candidates, lambda_t, gamma
-        )
-
-        # 3. Destiny updates the weight vector (w0, w1)
-        w0 = w0 * w0_mult_cache[thr_t]
-        w1 = w1 * w1_mult_cache[thr_t]
-
-        # 4. Save the hypothesis and lambda_t
-        hypothesis_history[t] = thr_t
-        lambda_bar[t] = lambda_t
-
-    # get statistics of hypothesis choices (so called D_bar)
-    D_bar: Dict[float, int] = {}
-    for thr in thr_candidates:
-        D_bar[thr] = np.sum(hypothesis_history == thr)
-
-    # Provide histories of hypothesis selection, I_alpha and error if requested
-    # This is outside the scope of the algorithm, but is useful for debugging
     if collect_ge_history:
-        I_alpha_history = np.zeros((T,), dtype=float)
-        err_history = np.zeros((T,), dtype=float)
-        for t in range(T):
-            I_alpha_history[t], err_history[t] = ge_err_cache[
-                hypothesis_history[t]
-            ]
-    else:
-        hypothesis_history = None  # type: ignore
-        I_alpha_history = None
-        err_history = None
+        return solve_gefair_loop_traced(
+            T,
+            thr_candidates,
+            I_alpha_cache,
+            err_cache,
+            lambda_max,
+            w0_mult_cache,
+            w1_mult_cache,
+            lambda_0_thri,
+            lambda_1_thri,
+        )
 
-    return GEFairResult(
+    return solve_gefair_loop(
         T,
-        D_bar,
-        lambda_bar,
-        hypothesis_history,
-        I_alpha_history,
-        err_history,
+        thr_candidates,
+        lambda_max,
+        w0_mult_cache,
+        w1_mult_cache,
+        lambda_0_thri,
+        lambda_1_thri,
     )

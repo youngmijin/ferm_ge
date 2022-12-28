@@ -46,8 +46,8 @@ inline double get_Iup(double alpha, double c, double a) {
 inline GEFAIR_RESULT *solve_gefair_loop_traced(
     size_t T, size_t thr_candidates_size, double *thr_candidates,
     double *I_alpha_cache, double *err_cache, double lambda_max,
-    double *w0_mult_cache, double *w1_mult_cache, double lambda_0_thri,
-    double lambda_1_thri) {
+    double *w0_mult_cache, double *w1_mult_cache, size_t lambda_0_thri,
+    size_t lambda_1_thri) {
   // This function is the same as solve_gefair_loop, except that it also
   // returns the history of the hypothesis, I_alpha, and err values.
   // So look for the comments in solve_gefair_loop below for more details.
@@ -106,8 +106,8 @@ inline GEFAIR_RESULT *solve_gefair_loop(size_t T, size_t thr_candidates_size,
                                         double lambda_max,
                                         double *w0_mult_cache,
                                         double *w1_mult_cache,
-                                        double lambda_0_thri,
-                                        double lambda_1_thri) {
+                                        size_t lambda_0_thri,
+                                        size_t lambda_1_thri) {
   minstd_rand rng(random_device{}());
   uniform_real_distribution<double> dist(0.0, 1.0);
 
