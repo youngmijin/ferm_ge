@@ -16,11 +16,11 @@ class C_GEFAIR_RESULT(ctypes.Structure):
 
 C_GEFAIR_RESULT._fields_ = [
     ("T", ctypes.c_size_t),
-    ("D_bar", ctypes.POINTER(ctypes.c_size_t)),
-    ("lambda_bar", ctypes.POINTER(ctypes.c_double)),
-    ("hypothesis_history", ctypes.POINTER(ctypes.c_double)),
-    ("I_alpha_history", ctypes.POINTER(ctypes.c_double)),
-    ("err_history", ctypes.POINTER(ctypes.c_double)),
+    ("D_bar_stats", ctypes.POINTER(ctypes.c_size_t)),
+    ("lambda_hist", ctypes.POINTER(ctypes.c_double)),
+    ("D_bar", ctypes.POINTER(ctypes.c_double)),
+    ("I_alpha_bar", ctypes.POINTER(ctypes.c_double)),
+    ("err_bar", ctypes.POINTER(ctypes.c_double)),
 ]
 
 
@@ -53,40 +53,36 @@ class GEFairResultSM:
         return int(self.c_result.T)
 
     @cached_property
-    def D_bar(self) -> Dict[float, int]:
+    def D_bar_stats(self) -> Dict[float, int]:
         return {
-            thr: self.c_result.D_bar[i]
+            thr: self.c_result.D_bar_stats[i]
             for i, thr in enumerate(self.thr_candidates)
         }
 
     @property
-    def lambda_bar(self) -> np.ndarray:
-        return npct.as_array(self.c_result.lambda_bar, (self.T,))
+    def lambda_hist(self) -> np.ndarray:
+        return npct.as_array(self.c_result.lambda_hist, (self.T,))
 
     @property
-    def hypothesis_history(self) -> Optional[np.ndarray]:
+    def D_bar(self) -> Optional[np.ndarray]:
         if self.includes_ge_history:
-            return npct.as_array(self.c_result.hypothesis_history, (self.T,))
+            return npct.as_array(self.c_result.D_bar, (self.T,))
         else:
             return None
 
     @property
-    def I_alpha_history(self) -> Optional[np.ndarray]:
+    def I_alpha_bar(self) -> Optional[np.ndarray]:
         if self.includes_ge_history:
-            return npct.as_array(self.c_result.I_alpha_history, (self.T,))
+            return npct.as_array(self.c_result.I_alpha_bar, (self.T,))
         else:
             return None
 
     @property
-    def err_history(self) -> Optional[np.ndarray]:
+    def err_bar(self) -> Optional[np.ndarray]:
         if self.includes_ge_history:
-            return npct.as_array(self.c_result.err_history, (self.T,))
+            return npct.as_array(self.c_result.err_bar, (self.T,))
         else:
             return None
-
-    def save_to(self, path: str):
-        with open(path, "wb") as f:
-            pickle.dump(self, f)
 
 
 class GEFairSolverC:

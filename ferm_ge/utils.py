@@ -1,5 +1,5 @@
 from itertools import product
-from typing import Dict, FrozenSet, List, Optional, Tuple, Union
+from typing import Dict, FrozenSet, List, Optional, Tuple
 
 import numpy as np
 
@@ -20,10 +20,6 @@ def frozenkey_to_paramdict(frozenkey: FrozenKey) -> Dict[str, float]:
 
 def paramdict_to_frozenkey(paramdict: Dict[str, float]) -> FrozenKey:
     return frozenset(paramdict.items())
-
-
-def average_by_time(array: Union[np.ndarray, List[float]]) -> np.ndarray:
-    return np.divide(np.cumsum(array), np.arange(len(array)) + 1.0)
 
 
 def apply_sampling(
@@ -62,7 +58,7 @@ def predict_memory_consumption(
     collect_ge_history: bool,
 ) -> float:
     """
-    Predict memory consumption in bytes during GEFAIR algorithm.
+    Predict approximated maximum memory consumption in bytes during algorithm.
     """
 
     if alpha == 0:
@@ -76,17 +72,17 @@ def predict_memory_consumption(
     A_alpha = 1 + lambda_max * (gamma + I_max)
     T = 4 * A_alpha * A_alpha * np.log(2) / (nu * nu)
 
-    mem_consumption = 0.0
+    mem_consumption: float = 0.0
 
-    mem_consumption += 8 * thr_finding_granularity  # mem_thr_cache
     mem_consumption += 8 * thr_finding_granularity  # mem_w0_mult_cache
     mem_consumption += 8 * thr_finding_granularity  # mem_w1_mult_cache
 
-    mem_consumption += 8 * T  # mem_hyp_hist
+    mem_consumption += 8 * T  # mem_thri_hist
     mem_consumption += 8 * T  # mem_lbar_hist
     mem_consumption += 8 * thr_finding_granularity  # mem_Dbar_hist
 
     if collect_ge_history:
+        mem_consumption += 8 * T  # mem_hyp_hist
         mem_consumption += 8 * T  # mem_ge_hist
         mem_consumption += 8 * T  # mem_err_hist
 

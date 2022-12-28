@@ -1,3 +1,4 @@
+import time
 import warnings
 from typing import Callable, Dict, List, Optional, Tuple, Union
 
@@ -8,7 +9,7 @@ from matplotlib.figure import Figure
 
 from .algorithm_gefair import GEFairResultSM
 from .experiment import Metrics
-from .utils import FrozenKey, apply_sampling, average_by_time
+from .utils import FrozenKey, apply_sampling
 
 matplotlib.rcParams["font.family"] = "serif"
 
@@ -126,7 +127,7 @@ def plot_convergence(
     title: Optional[str] = None,
     save_path: Optional[str] = None,
     sampling_threshold: Optional[int] = 2000000,
-    sampling_exclude_initial: int = 500000,
+    sampling_exclude_initial: int = 10000,
     magnify: Optional[Tuple[float, float]] = None,
     highlight_range: Optional[Tuple[float, float]] = None,
 ) -> Figure:
@@ -162,7 +163,7 @@ def plot_convergence(
         return fig
 
     if highlight_range is not None:
-        ax.axvspan(*highlight_range, color="yellow", alpha=0.5)
+        ax.axvspan(*highlight_range, color="bisque")
 
     if type(color) == str:
         colors: List[str] = [color] * len(r_values)  # type: ignore
@@ -183,17 +184,17 @@ def plot_convergence(
             things_to_plot: Optional[np.ndarray] = None
             if metric_name == "I_alpha":
                 assert (
-                    exp_result.I_alpha_history is not None
+                    exp_result.I_alpha_bar is not None
                 ), "I_alpha_history is None"
-                things_to_plot = average_by_time(exp_result.I_alpha_history)
+                things_to_plot = exp_result.I_alpha_bar
             elif metric_name == "err":
-                assert exp_result.err_history is not None, "err_history is None"
-                things_to_plot = average_by_time(exp_result.err_history)
+                assert exp_result.err_bar is not None, "err_history is None"
+                things_to_plot = exp_result.err_bar
             elif metric_name == "threshold" or metric_name == "hypothesis":
                 assert (
-                    exp_result.hypothesis_history is not None
+                    exp_result.D_bar is not None
                 ), "hypothesis_history is None"
-                things_to_plot = average_by_time(exp_result.hypothesis_history)
+                things_to_plot = exp_result.D_bar
             assert things_to_plot is not None, "things_to_plot is None"
             ax.plot(
                 *apply_sampling(

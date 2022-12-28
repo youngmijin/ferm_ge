@@ -1,52 +1,35 @@
 #include <cfloat>
 #include <cmath>
-#include <map>
 #include <random>
 
-using std::map;
 using std::minstd_rand;
-using std::pair;
 using std::random_device;
 using std::uniform_real_distribution;
 
 typedef struct {
-  size_t T;
-  size_t *D_bar;
-  double *lambda_bar;
-  double *hypothesis_history;
-  double *I_alpha_history;
-  double *err_history;
+  size_t T;             // Number of iterations
+  size_t *D_bar_stats;  // Number of times each threshold was selected
+  double *lambda_hist;  // History of lambda values
+  double *D_bar;        // History of D_bar values
+  double *I_alpha_bar;  // History of time-averaged I_alpha values
+  double *err_bar;      // History of time-averaged error values
 } GEFAIR_RESULT;
 
-inline double calc_L(map<double, pair<double, double>> *ge_err_cache,
-                     double threshold, double lambda, double gamma) {
-  // Find Lagrangian with given lambda and threshold
-  auto cached_value = ge_err_cache->find(threshold);
-  double I_alpha = cached_value->second.first;
-  double err = cached_value->second.second;
-  return err + lambda * (I_alpha - gamma);
-}
-
-inline double find_threshold(map<double, pair<double, double>> *ge_err_cache,
-                             map<double, double> *thr_cache,
-                             size_t thr_candidates_size, double *thr_candidates,
-                             double lambda, double gamma) {
+inline size_t find_threshold_idx(double *I_alpha_cache, double *err_cache,
+                                 size_t thr_candidates_size,
+                                 double *thr_candidates, double lambda,
+                                 double gamma) {
   // Find threshold for a given lambda value (the "oracle")
-  auto cached_value = thr_cache->find(lambda);
-  if (cached_value != thr_cache->end()) return cached_value->second;
-
-  double thr_of_lambda = 0.0;
+  double thri_of_lambda = 0.0;
   double min_L_value = DBL_MAX;
   for (size_t i = 0; i < thr_candidates_size; i += 1) {
-    double L_value = calc_L(ge_err_cache, thr_candidates[i], lambda, gamma);
+    double L_value = err_cache[i] + lambda * (I_alpha_cache[i] - gamma);
     if (L_value < min_L_value) {
       min_L_value = L_value;
-      thr_of_lambda = thr_candidates[i];
+      thri_of_lambda = i;
     }
   }
-
-  thr_cache->insert({lambda, thr_of_lambda});
-  return thr_of_lambda;
+  return thri_of_lambda;
 }
 
 inline double get_Iup(double alpha, double c, double a) {
@@ -58,6 +41,114 @@ inline double get_Iup(double alpha, double c, double a) {
     return ca * log(ca);
   else
     return (pow(ca, alpha) - 1) / abs(alpha * (alpha - 1));
+}
+
+inline GEFAIR_RESULT *solve_gefair_loop_traced(
+    size_t T, size_t thr_candidates_size, double *thr_candidates,
+    double *I_alpha_cache, double *err_cache, double lambda_max,
+    double *w0_mult_cache, double *w1_mult_cache, double lambda_0_thri,
+    double lambda_1_thri) {
+  // This function is the same as solve_gefair_loop, except that it also
+  // returns the history of the hypothesis, I_alpha, and err values.
+  // So look for the comments in solve_gefair_loop below for more details.
+  minstd_rand rng(random_device{}());
+  uniform_real_distribution<double> dist(0.0, 1.0);
+
+  double w0 = 1.0;
+  double w1 = 1.0;
+
+  double lambda_0 = 0.0;
+  double lambda_1 = lambda_max;
+
+  size_t *D_bar_stats = (size_t *)calloc(thr_candidates_size, sizeof(size_t));
+  double *lambda_hist = (double *)malloc(T * sizeof(double));
+  double *D_bar = (double *)malloc(T * sizeof(double));
+  double *I_alpha_bar = (double *)malloc(T * sizeof(double));
+  double *err_bar = (double *)malloc(T * sizeof(double));
+
+  double D_hist_sum = 0.0;
+  double I_alpha_hist_sum = 0.0;
+  double err_hist_sum = 0.0;
+  for (size_t t = 0; t < T; t += 1) {
+    int w0_selected = int(dist(rng) < (w0 / (w0 + w1)));
+    double lambda_t = w0_selected * lambda_0 + (1 - w0_selected) * lambda_1;
+
+    size_t thri_t =
+        w0_selected * lambda_0_thri + (1 - w0_selected) * lambda_1_thri;
+
+    w0 = w0 * w0_mult_cache[thri_t];
+    w1 = w1 * w1_mult_cache[thri_t];
+
+    D_bar_stats[thri_t] += 1;
+    lambda_hist[t] = lambda_t;
+
+    D_hist_sum += thr_candidates[thri_t];
+    I_alpha_hist_sum += I_alpha_cache[thri_t];
+    err_hist_sum += err_cache[thri_t];
+
+    D_bar[t] = D_hist_sum / (t + 1);
+    I_alpha_bar[t] = I_alpha_hist_sum / (t + 1);
+    err_bar[t] = err_hist_sum / (t + 1);
+  }
+
+  auto result = (GEFAIR_RESULT *)malloc(sizeof(GEFAIR_RESULT));
+  result->T = T;
+  result->D_bar_stats = D_bar_stats;
+  result->lambda_hist = lambda_hist;
+  result->D_bar = D_bar;
+  result->I_alpha_bar = I_alpha_bar;
+  result->err_bar = err_bar;
+
+  return result;
+}
+
+inline GEFAIR_RESULT *solve_gefair_loop(size_t T, size_t thr_candidates_size,
+                                        double lambda_max,
+                                        double *w0_mult_cache,
+                                        double *w1_mult_cache,
+                                        double lambda_0_thri,
+                                        double lambda_1_thri) {
+  minstd_rand rng(random_device{}());
+  uniform_real_distribution<double> dist(0.0, 1.0);
+
+  double w0 = 1.0;
+  double w1 = 1.0;
+
+  double lambda_0 = 0.0;
+  double lambda_1 = lambda_max;
+
+  size_t *D_bar_stats = (size_t *)calloc(thr_candidates_size, sizeof(size_t));
+  double *lambda_hist = (double *)malloc(T * sizeof(double));
+
+  // Implementation hack: use the "index number" of the threshold instead of
+  //                      the threshold itself throughout the algorithm
+  for (size_t t = 0; t < T; t += 1) {
+    // 1. Destiny chooses lambda_t
+    int w0_selected = int(dist(rng) < (w0 / (w0 + w1)));
+    double lambda_t = w0_selected * lambda_0 + (1 - w0_selected) * lambda_1;
+
+    // 2. The learner chooses a hypothesis (threshold(float) in this case)
+    size_t thri_t =
+        w0_selected * lambda_0_thri + (1 - w0_selected) * lambda_1_thri;
+
+    // 3. Destiny updates the weight vector (w0, w1)
+    w0 = w0 * w0_mult_cache[thri_t];
+    w1 = w1 * w1_mult_cache[thri_t];
+
+    // 4. Save the hypothesis and lambda_t
+    D_bar_stats[thri_t] += 1;
+    lambda_hist[t] = lambda_t;
+  }
+
+  auto result = (GEFAIR_RESULT *)malloc(sizeof(GEFAIR_RESULT));
+  result->T = T;
+  result->D_bar_stats = D_bar_stats;
+  result->lambda_hist = lambda_hist;
+  result->D_bar = nullptr;
+  result->I_alpha_bar = nullptr;
+  result->err_bar = nullptr;
+
+  return result;
 }
 
 extern "C" GEFAIR_RESULT *solve_gefair(size_t thr_candidates_size,
@@ -77,108 +168,48 @@ extern "C" GEFAIR_RESULT *solve_gefair(size_t thr_candidates_size,
   size_t T = 4 * A_alpha * A_alpha * log(2) / (nu * nu);
   double kappa = nu / (2 * A_alpha);
 
-  // Implementation hack: cache the results of the oracle
-  map<double, double> thr_cache;
-
-  // Implementation hack: change form of the I_alpha and error cache to make it
-  // easier to use
-  map<double, pair<double, double>> ge_err_cache;
-  for (size_t i = 0; i < thr_candidates_size; i += 1)
-    ge_err_cache.insert({thr_candidates[i], {I_alpha_cache[i], err_cache[i]}});
-
   // Implementation hack: avoid repeated calculation of multiplicative factors
-  map<double, double> w0_mult_cache;
-  map<double, double> w1_mult_cache;
+  double *w0_mult_cache =
+      (double *)malloc(thr_candidates_size * sizeof(double));
+  double *w1_mult_cache =
+      (double *)malloc(thr_candidates_size * sizeof(double));
   for (size_t i = 0; i < thr_candidates_size; i += 1) {
-    w0_mult_cache.insert(
-        {thr_candidates[i],
-         pow(kappa + 1.0,
-             (calc_L(&ge_err_cache, thr_candidates[i], 0, gamma) + B) /
-                 A_alpha)});
-    w1_mult_cache.insert(
-        {thr_candidates[i],
-         pow(kappa + 1.0,
-             (calc_L(&ge_err_cache, thr_candidates[i], lambda_max, gamma) + B) /
-                 A_alpha)});
+    w0_mult_cache[i] = pow(kappa + 1.0, (err_cache[i] + B) / A_alpha);
+    w1_mult_cache[i] =
+        pow(kappa + 1.0,
+            ((err_cache[i] + lambda_max * (I_alpha_cache[i] - gamma)) + B) /
+                A_alpha);
   }
 
-  minstd_rand rng(random_device{}());
-  uniform_real_distribution<double> dist(0.0, 1.0);
+  size_t lambda_0_thri =
+      find_threshold_idx(I_alpha_cache, err_cache, thr_candidates_size,
+                         thr_candidates, 0.0, gamma);
+  size_t lambda_1_thri =
+      find_threshold_idx(I_alpha_cache, err_cache, thr_candidates_size,
+                         thr_candidates, lambda_max, gamma);
 
-  double w0 = 1.0;
-  double w1 = 1.0;
-
-  double lambda_0 = 0.0;
-  double lambda_1 = lambda_max;
-
-  double *hypothesis_history = (double *)malloc(T * sizeof(double));
-  double *lambda_bar = (double *)malloc(T * sizeof(double));
-
-  for (size_t t = 0; t < T; t += 1) {
-    // 1. Destiny chooses lambda_t
-    double w0_prob_t = w0 / (w0 + w1);
-    double lambda_t = (dist(rng) < w0_prob_t) ? lambda_0 : lambda_1;
-
-    // 2. The learner chooses a hypothesis (threshold(float) in this case)
-    double thr_t =
-        find_threshold(&ge_err_cache, &thr_cache, thr_candidates_size,
-                       thr_candidates, lambda_t, gamma);
-
-    // 3. Destiny updates the weight vector (w0, w1)
-    double w0_mult = w0_mult_cache.find(thr_t)->second;
-    double w1_mult = w1_mult_cache.find(thr_t)->second;
-
-    w0 = w0 * w0_mult;
-    w1 = w1 * w1_mult;
-
-    // 4. Save the hypothesis and lambda_t
-    hypothesis_history[t] = thr_t;
-    lambda_bar[t] = lambda_t;
-  }
-
-  // get statistics of hypothesis choices (so called D_bar)
-  size_t *D_bar = (size_t *)malloc(thr_candidates_size * sizeof(size_t));
-  for (size_t i = 0; i < thr_candidates_size; i += 1) {
-    D_bar[i] = 0;
-    for (size_t t = 0; t < T; t += 1) {
-      if (hypothesis_history[t] == thr_candidates[i]) D_bar[i] += 1;
-    }
-  }
-
-  auto result = (GEFAIR_RESULT *)malloc(sizeof(GEFAIR_RESULT));
-  result->T = T;
-  result->D_bar = D_bar;
-  result->lambda_bar = lambda_bar;
-
-  // Provide histories of hypothesis selection, I_alpha and error if requested
-  // This is outside the scope of the algorithm, but is useful for debugging
+  GEFAIR_RESULT *result;
   if (collect_ge_history) {
-    double *I_alpha_history = (double *)malloc(T * sizeof(double));
-    double *err_history = (double *)malloc(T * sizeof(double));
-    for (size_t t = 0; t < T; t += 1) {
-      double thr_t = hypothesis_history[t];
-      auto ge_err = ge_err_cache.find(thr_t);
-      I_alpha_history[t] = ge_err->second.first;
-      err_history[t] = ge_err->second.second;
-    }
-    result->I_alpha_history = I_alpha_history;
-    result->err_history = err_history;
-    result->hypothesis_history = hypothesis_history;
+    result = solve_gefair_loop_traced(
+        T, thr_candidates_size, thr_candidates, I_alpha_cache, err_cache,
+        lambda_max, w0_mult_cache, w1_mult_cache, lambda_0_thri, lambda_1_thri);
   } else {
-    free(hypothesis_history);
-    result->I_alpha_history = nullptr;
-    result->err_history = nullptr;
-    result->hypothesis_history = nullptr;
+    result =
+        solve_gefair_loop(T, thr_candidates_size, lambda_max, w0_mult_cache,
+                          w1_mult_cache, lambda_0_thri, lambda_1_thri);
   }
+
+  free(w0_mult_cache);
+  free(w1_mult_cache);
 
   return result;
 }
 
 extern "C" void free_gefair_result(GEFAIR_RESULT *result) {
-  if (result->I_alpha_history != nullptr) free(result->I_alpha_history);
-  if (result->err_history != nullptr) free(result->err_history);
-  if (result->hypothesis_history != nullptr) free(result->hypothesis_history);
-  free(result->D_bar);
-  free(result->lambda_bar);
+  if (result->I_alpha_bar != nullptr) free(result->I_alpha_bar);
+  if (result->err_bar != nullptr) free(result->err_bar);
+  if (result->D_bar != nullptr) free(result->D_bar);
+  free(result->D_bar_stats);
+  free(result->lambda_hist);
   free(result);
 }

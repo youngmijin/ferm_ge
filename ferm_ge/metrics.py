@@ -54,7 +54,8 @@ def _calc_metrics_with_prob(
         a = param_dict["a"]
 
         thr_prob = {
-            thr: count / exp_result.T for thr, count in exp_result.D_bar.items()
+            thr: count / exp_result.T
+            for thr, count in exp_result.D_bar_stats.items()
         }
 
         test_I_alpha = 0.0
@@ -91,7 +92,8 @@ def _calc_metrics_with_repeat(
     a = param_dict["a"]
 
     thr_prob = {
-        thr: count / exp_result.T for thr, count in exp_result.D_bar.items()
+        thr: count / exp_result.T
+        for thr, count in exp_result.D_bar_stats.items()
     }
     rand_items = list(thr_prob.keys())
     rand_probs = list(thr_prob.values())
