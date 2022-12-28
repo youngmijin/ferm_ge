@@ -19,7 +19,7 @@ from ferm_ge import (
     get_params_combination,
     plot_convergence,
     plot_metrics,
-    plotting_default_colors,
+    plotting_default_color,
     plotting_default_figsize,
 )
 
@@ -40,6 +40,8 @@ def flatten_list(l: List[List[float]]) -> List[float]:
 
 
 def main(args):
+    print("Arguments:", args)
+
     # Check if colors are valid
     for color in args.colors:
         if color not in BASE_COLORS and color not in CSS4_COLORS:
@@ -193,8 +195,14 @@ def main(args):
 
         # Plot and save convergence traces (if applicable)
         if args.plot_convergence:
-            magnify_range = (-200, 5500)
-            highlight_range = (-100000, 400000)
+            magnify_range = (
+                args.magnify_range if np.sum(args.magnify_range) > 0 else None
+            )
+            highlight_range = (
+                args.highlight_range
+                if np.sum(args.highlight_range) > 0
+                else None
+            )
             assert exp_results is not None, "exp_results should not be None"
             print("  - Plotting convergence traces...", flush=True, end=" ")
             start_time = time.time()
@@ -320,12 +328,15 @@ if __name__ == "__main__":
     parser.add_argument("--test_repeat_times", type=int, default=10000)
 
     parser.add_argument("--plot_convergence", action="store_true")
+    parser.add_argument("--magnify_range", type=float, nargs=2, default=(0, 0))
+    parser.add_argument(
+        "--highlight_range", type=float, nargs=2, default=(0, 0)
+    )
 
     parser.add_argument(
         "--colors",
-        type=str,
-        action="append",
-        default=plotting_default_colors,
+        nargs="*",
+        default=[plotting_default_color],
     )
     parser.add_argument(
         "--figsize",

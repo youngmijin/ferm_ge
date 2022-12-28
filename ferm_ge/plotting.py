@@ -13,15 +13,7 @@ from .utils import FrozenKey, apply_sampling
 
 matplotlib.rcParams["font.family"] = "serif"
 
-default_colors = [
-    "red",
-    "green",
-    "black",
-    "orange",
-    "navy",
-    "violet",
-]
-
+default_color = "black"
 default_figsize = (4, 2.3)
 
 
@@ -30,7 +22,7 @@ def plot_metrics(
     metric_name: str,
     params_filter: Callable[[Dict[str, float]], bool] = lambda _: True,
     figsize: Tuple[float, float] = default_figsize,
-    color: Union[List[str], str] = default_colors,
+    color: Union[List[str], str] = default_color,
     title: Optional[str] = None,
     save_path: Optional[str] = None,
 ) -> Figure:
@@ -123,7 +115,7 @@ def plot_convergence(
     metric_name: str,
     params_filter: Callable[[Dict[str, float]], bool] = lambda _: True,
     figsize: Tuple[float, float] = default_figsize,
-    color: Union[List[str], str] = default_colors,
+    color: Union[List[str], str] = default_color,
     title: Optional[str] = None,
     save_path: Optional[str] = None,
     sampling_threshold: Optional[int] = 2000000,

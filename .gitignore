@@ -27,4 +27,7 @@ data/*
 
 ### Output ###
 output/
+
+### Misc ###
+*.sh
 *.pdf
