@@ -16,6 +16,7 @@ from data import Preset
 from ferm_ge import (
     Experiment,
     frozenkey_to_paramdict,
+    get_params_combination,
     plot_convergence,
     plot_metrics,
     plotting_default_colors,
@@ -96,7 +97,11 @@ def main(args):
     run_name = time.strftime("%Y-%m-%d_%H-%M-%S", time.localtime())
     for group_idx in range(len(args.alpha)):
         print(
-            f"Running group [ {group_idx + 1} / {len(args.alpha)} ]",
+            "Running group [ {} / {} ] ({} exps)".format(
+                group_idx + 1,
+                len(args.alpha),
+                len(get_params_combination(param_dicts[group_idx])),
+            ),
             flush=True,
         )
 
@@ -127,8 +132,9 @@ def main(args):
             delete_results=(not args.plot_convergence),
             return_metrics=True,
             metrics_repeat_times=args.test_repeat_times,
+            callback=(lambda _, __: print(".", end="", flush=True)),
         )
-        print(f"done in ({time.time() - start_time:.2f} sec)", flush=True)
+        print(f" done in ({time.time() - start_time:.2f} sec)", flush=True)
 
         print("  - Saving metrics...", flush=True, end=" ")
         start_time = time.time()
@@ -149,7 +155,7 @@ def main(args):
         if len(gamma_values) < 2:
             print("  - Skipping plotting by gamma due to insufficient params.")
         else:
-            print("  - Plotting I_alpha ...", flush=True, end=" ")
+            print("  - Plotting I_alpha...", flush=True, end=" ")
             start_time = time.time()
             I_alpha_pdf_path = os.path.join(
                 args.output_dir,
@@ -167,7 +173,7 @@ def main(args):
             print(f"done in ({time.time() - start_time:.2f} sec)", flush=True)
             print(f"    saved: {I_alpha_pdf_path}", flush=True)
 
-            print("  - Plotting err ...", flush=True, end=" ")
+            print("  - Plotting err...", flush=True, end=" ")
             start_time = time.time()
             err_pdf_path = os.path.join(
                 args.output_dir,
@@ -190,7 +196,7 @@ def main(args):
             magnify_range = (-200, 5500)
             highlight_range = (-100000, 400000)
             assert exp_results is not None, "exp_results should not be None"
-            print("  - Plotting convergence traces ...", flush=True, end=" ")
+            print("  - Plotting convergence traces...", flush=True, end=" ")
             start_time = time.time()
             I_alpha_trace_pdf_path = os.path.join(
                 args.output_dir,
@@ -224,7 +230,7 @@ def main(args):
             print(f"    saved: {I_alpha_trace_pdf_path}", flush=True)
             print(f"    saved: {I_alpha_trace_jitter_pdf_path}", flush=True)
 
-            print("  - Plotting err traces ...", flush=True, end=" ")
+            print("  - Plotting err traces...", flush=True, end=" ")
             start_time = time.time()
             err_trace_pdf_path = os.path.join(
                 args.output_dir,

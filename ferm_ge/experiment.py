@@ -2,7 +2,7 @@ import gc
 import multiprocessing as mp
 import os
 from multiprocessing.pool import ThreadPool as Pool
-from typing import Dict, List, Optional, Tuple, Type
+from typing import Any, Callable, Dict, List, Optional, Tuple, Type
 
 import numpy as np
 import psutil
@@ -85,6 +85,7 @@ class Experiment:
         delete_results: bool = False,
         return_metrics: bool = False,
         metrics_repeat_times: int = 10000,
+        callback: Optional[Callable[[FrozenKey, GEFairResultSM], Any]] = None,
     ) -> Tuple[
         Optional[Dict[FrozenKey, GEFairResultSM]],
         Optional[Dict[FrozenKey, Metrics]],
@@ -148,6 +149,8 @@ class Experiment:
 
         if len(mp_args) == 1:
             key, result = self._run(*mp_args[0])
+            if callback is not None:
+                callback(key, result)
             metric: Optional[Dict[FrozenKey, Metrics]] = None
             if return_metrics:
                 metric = calc_metrics(
@@ -183,6 +186,8 @@ class Experiment:
 
                 pool = Pool(processes=len(current_mp_args))
                 for key, result in pool.starmap(self._run, current_mp_args):
+                    if callback is not None:
+                        callback(key, result)
                     if return_metrics:
                         metrics[key] = list(
                             calc_metrics(
