@@ -10,7 +10,7 @@ from matplotlib.figure import Figure
 from .algorithm_gefair import GEFairResultSM
 from .experiment import BaselineValues
 from .metrics import Metrics
-from .utils import FrozenKey, apply_sampling
+from .utils import FrozenKey, apply_sampling, frozenkey_to_paramdict
 
 matplotlib.rcParams["font.family"] = "serif"
 
@@ -35,7 +35,7 @@ def plot_metrics(
     c_values = set()
     a_values = set()
     for exp_key, exp_metric in exp_metrics.items():
-        param_dict = {k: v for k, v in list(exp_key)}
+        param_dict = frozenkey_to_paramdict(exp_key)
         if not params_filter(param_dict):
             continue
         experiments_to_draw.append(exp_key)
@@ -75,7 +75,7 @@ def plot_metrics(
         for exp_key, exp_metric in exp_metrics.items():
             if exp_key not in experiments_to_draw:
                 continue
-            param_dict = {k: v for k, v in list(exp_key)}
+            param_dict = frozenkey_to_paramdict(exp_key)
             if param_dict["c"] != c:
                 continue
             plot_x.append(param_dict["gamma"])
@@ -98,17 +98,24 @@ def plot_metrics(
         xmax = max(xmax, max(plot_x))
 
     if baseline is not None:
-        baseline_set = set()
+        baseline_dict = {}
         for exp_key, baseline_value in baseline.items():
             if exp_key not in experiments_to_draw:
                 continue
-            baseline_set.add(getattr(baseline_value, metric_name))
+            param_dict = frozenkey_to_paramdict(exp_key)
+            baseline_dict[param_dict["c"]] = getattr(
+                baseline_value, metric_name
+            )
 
-        for baseline_value in baseline_set:
-            ax.axhline(baseline_value, linestyle="--", color="gray")
+        for ci, c in enumerate(c_values_list):
+            assert c in baseline_dict, f"Missing baseline for c={c}"
+            baseline_value = baseline_dict[c]
+            ax.axhline(
+                baseline_value, linestyle="--", color=colors[ci], alpha=0.4
+            )
 
     if len(c_values) > 1:
-        ax.legend(loc="upper right")
+        ax.legend(loc="lower right")
 
     if title is not None:
         ax.set_title(title)
