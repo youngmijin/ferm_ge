@@ -8,7 +8,8 @@ import numpy as np
 from matplotlib.figure import Figure
 
 from .algorithm_gefair import GEFairResultSM
-from .experiment import Metrics
+from .experiment import BaselineValues
+from .metrics import Metrics
 from .utils import FrozenKey, apply_sampling
 
 matplotlib.rcParams["font.family"] = "serif"
@@ -25,6 +26,7 @@ def plot_metrics(
     color: Union[List[str], str] = default_color,
     title: Optional[str] = None,
     save_path: Optional[str] = None,
+    baseline: Optional[Dict[FrozenKey, BaselineValues]] = None,
 ) -> Figure:
     assert metric_name in ["I_alpha", "err"]
 
@@ -95,8 +97,18 @@ def plot_metrics(
         xmin = min(xmin, min(plot_x))
         xmax = max(xmax, max(plot_x))
 
+    if baseline is not None:
+        baseline_set = set()
+        for exp_key, baseline_value in baseline.items():
+            if exp_key not in experiments_to_draw:
+                continue
+            baseline_set.add(getattr(baseline_value, metric_name))
+
+        for baseline_value in baseline_set:
+            ax.axhline(baseline_value, linestyle="--", color="gray")
+
     if len(c_values) > 1:
-        ax.legend()
+        ax.legend(loc="upper right")
 
     if title is not None:
         ax.set_title(title)

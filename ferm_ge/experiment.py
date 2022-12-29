@@ -1,6 +1,7 @@
 import gc
 import multiprocessing as mp
 import os
+from dataclasses import dataclass
 from multiprocessing.pool import ThreadPool as Pool
 from typing import Any, Callable, Dict, List, Optional, Tuple, Type
 
@@ -13,10 +14,17 @@ from .metrics import Metrics, calc_metrics
 from .tasks import BaseTask
 from .utils import (
     FrozenKey,
+    frozenkey_to_paramdict,
     get_params_combination,
     paramdict_to_frozenkey,
     predict_memory_consumption,
 )
+
+
+@dataclass
+class BaselineValues:
+    I_alpha: float
+    err: float
 
 
 class Experiment:
@@ -35,6 +43,22 @@ class Experiment:
     def __del__(self):
         if os.path.exists(self.lib_path):
             os.remove(self.lib_path)
+
+    def test_ge_err(
+        self, alpha: float, c: float, a: float, threshold: float = 0.5
+    ) -> Tuple[float, float]:
+        """
+        Calculate GE fairness and error without FERM on test dataset.
+        """
+
+        assert self.task.tested, "Task must be tested first."
+
+        _, (tn, fp, fn, tp) = self.task.predict_test_with_threshold(threshold)
+
+        err: float = (fp + fn) / (tn + fp + fn + tp)
+        I_alpha: float = ge_confmat(alpha, c, a, tn, fp, fn, tp)
+
+        return I_alpha, err
 
     def _run(
         self,
@@ -89,6 +113,7 @@ class Experiment:
     ) -> Tuple[
         Optional[Dict[FrozenKey, GEFairResultSM]],
         Optional[Dict[FrozenKey, Metrics]],
+        Dict[FrozenKey, BaselineValues],
     ]:
         """Run the FERM-GE solver with given parameters"""
 
@@ -110,10 +135,15 @@ class Experiment:
         ge_cache: Dict[
             float, Dict[float, Dict[float, Tuple[List[float], List[float]]]]
         ] = {}
+        baseline_cache: Dict[
+            float, Dict[float, Dict[float, Tuple[float, float]]]
+        ] = {}
         for alpha in set(params["alpha"]):
             ge_cache[alpha] = {}
+            baseline_cache[alpha] = {}
             for c in set(params["c"]):
                 ge_cache[alpha][c] = {}
+                baseline_cache[alpha][c] = {}
                 for a in set(params["a"]):
                     I_alpha_list = []
                     err_list = []
@@ -123,6 +153,12 @@ class Experiment:
                         I_alpha_list.append(I_alpha)
                         err_list.append(err)
                     ge_cache[alpha][c][a] = (I_alpha_list, err_list)
+
+                    min_err_idx = np.argmin(err_list)
+                    baseline_cache[alpha][c][a] = (
+                        I_alpha_list[min_err_idx],
+                        err_list[min_err_idx],
+                    )
 
         mem_usages = []
         mp_args = []
@@ -151,6 +187,12 @@ class Experiment:
             key, result = self._run(*mp_args[0])
             if callback is not None:
                 callback(key, result)
+            param_dict = frozenkey_to_paramdict(key)
+            baseline = BaselineValues(
+                *baseline_cache[param_dict["alpha"]][param_dict["c"]][
+                    param_dict["a"]
+                ]
+            )
             metric: Optional[Dict[FrozenKey, Metrics]] = None
             if return_metrics:
                 metric = calc_metrics(
@@ -160,11 +202,12 @@ class Experiment:
                 )
             if delete_results:
                 del result
-                return None, metric
-            return {key: result}, metric
+                return None, metric, {key: baseline}
+            return {key: result}, metric, {key: baseline}
         else:
             results: Dict[FrozenKey, GEFairResultSM] = {}
             metrics: Dict[FrozenKey, Metrics] = {}
+            baselines: Dict[FrozenKey, BaselineValues] = {}
 
             pool_max_size = max(mp.cpu_count() - 4, 1)
 
@@ -188,6 +231,12 @@ class Experiment:
                 for key, result in pool.starmap(self._run, current_mp_args):
                     if callback is not None:
                         callback(key, result)
+                    param_dict = frozenkey_to_paramdict(key)
+                    baselines[key] = BaselineValues(
+                        *baseline_cache[param_dict["alpha"]][param_dict["c"]][
+                            param_dict["a"]
+                        ]
+                    )
                     if return_metrics:
                         metrics[key] = list(
                             calc_metrics(
@@ -205,10 +254,10 @@ class Experiment:
                     break
 
             if return_metrics and delete_results:
-                return None, metrics
+                return None, metrics, baselines
             elif not return_metrics and delete_results:
-                return None, None
+                return None, None, baselines
             elif return_metrics and not delete_results:
-                return results, metrics
+                return results, metrics, baselines
             else:
-                return results, None
+                return results, None, baselines

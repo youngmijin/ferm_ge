@@ -128,7 +128,7 @@ def main(args):
         )
         exp.task.train(*preset.get_train_data())
         exp.task.test(*preset.get_test_data())
-        exp_results, exp_metrics = exp.run(
+        exp_results, exp_metrics, exp_baselines = exp.run(
             param_dict,
             args.plot_convergence,
             delete_results=(not args.plot_convergence),
@@ -169,6 +169,7 @@ def main(args):
                 save_path=I_alpha_pdf_path,
                 color=args.colors,
                 figsize=args.figsize,
+                baseline=exp_baselines,
             )
             fig.clear()
             plt.close(fig)
@@ -187,6 +188,7 @@ def main(args):
                 save_path=err_pdf_path,
                 color=args.colors,
                 figsize=args.figsize,
+                baseline=exp_baselines,
             )
             fig.clear()
             plt.close(fig)
@@ -332,6 +334,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--highlight_range", type=float, nargs=2, default=(0, 0)
     )
+    parser.add_argument("--draw_baseline", action="store_true")
 
     parser.add_argument(
         "--colors",
