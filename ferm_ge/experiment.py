@@ -44,22 +44,6 @@ class Experiment:
         if os.path.exists(self.lib_path):
             os.remove(self.lib_path)
 
-    def test_ge_err(
-        self, alpha: float, c: float, a: float, threshold: float = 0.5
-    ) -> Tuple[float, float]:
-        """
-        Calculate GE fairness and error without FERM on test dataset.
-        """
-
-        assert self.task.tested, "Task must be tested first."
-
-        _, (tn, fp, fn, tp) = self.task.predict_test_with_threshold(threshold)
-
-        err: float = (fp + fn) / (tn + fp + fn + tp)
-        I_alpha: float = ge_confmat(alpha, c, a, tn, fp, fn, tp)
-
-        return I_alpha, err
-
     def _run(
         self,
         param: Dict[str, float],
