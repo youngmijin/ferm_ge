@@ -111,7 +111,7 @@ class Experiment:
             float, Tuple[float, Tuple[float, float, float, float]]
         ] = {}
         for thr in self.thr_candidates:
-            _, confmat = self.task.predict_test_with_threshold(thr)
+            _, confmat = self.task.predict_train_with_threshold(thr)
             tn, fp, fn, tp = confmat.astype(float)
             err: float = (fp + fn) / (tn + fp + fn + tp)
             err_confmat_cache[thr] = (err, (tn, fp, fn, tp))

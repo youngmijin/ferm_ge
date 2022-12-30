@@ -1,5 +1,5 @@
 from itertools import product
-from typing import Dict, FrozenSet, List, Optional, Tuple
+from typing import Dict, FrozenSet, List, Optional, Tuple, Union
 
 import numpy as np
 
@@ -87,3 +87,21 @@ def predict_memory_consumption(
         mem_consumption += 8 * T  # mem_err_hist
 
     return mem_consumption
+
+
+def param_to_readable_value(
+    param: Union[float, List[float]]
+) -> Union[str, float]:
+    if isinstance(param, float):
+        return param
+    elif isinstance(param, list):
+        if len(param) == 1:
+            return param[0]
+        elif len(param) == 0:
+            return "(empty list)"
+        elif len(param) < 6:
+            return ", ".join([str(p) for p in param])
+        else:
+            return f"from {min(param)} to {max(param)} with {len(param)} steps"
+    else:
+        raise TypeError(f"param must be float or list, but got {type(param)}")

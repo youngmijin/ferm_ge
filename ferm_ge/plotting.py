@@ -115,7 +115,10 @@ def plot_metrics(
             )
 
     if len(c_values) > 1:
-        ax.legend(loc="lower right")
+        if metric_name == "I_alpha":
+            ax.legend(loc="lower right")
+        elif metric_name == "err":
+            ax.legend(loc="upper right")
 
     if title is not None:
         ax.set_title(title)

@@ -5,7 +5,7 @@ import inspect
 import os
 import pickle
 import time
-from typing import Dict, List
+from typing import Any, Dict, List
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -17,6 +17,7 @@ from ferm_ge import (
     Experiment,
     frozenkey_to_paramdict,
     get_params_combination,
+    param_to_readable_value,
     plot_convergence,
     plot_metrics,
     plotting_default_color,
@@ -109,6 +110,13 @@ def main(args):
 
         # Save parameters
         param_dict = param_dicts[group_idx]
+        param_dict_to_save: Dict[str, Any] = {}
+        param_dict_to_save[
+            "thr_finding_granularity"
+        ] = args.thr_finding_granularity
+        for k, v in param_dict.items():
+            param_dict_to_save[k] = param_to_readable_value(v)
+        param_dict_to_save["dataset"] = preset.name
         os.makedirs(args.output_dir, exist_ok=True)
         with open(
             os.path.join(
@@ -117,7 +125,7 @@ def main(args):
             ),
             "w",
         ) as fs:
-            yaml.dump(param_dict, fs)
+            yaml.dump(param_dict_to_save, fs)
 
         # Run experiments and save metrics (I_alpha and err)
         print("  - Running experiments...", flush=True, end=" ")
