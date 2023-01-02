@@ -68,6 +68,8 @@ def plot_metrics(
     c_values_list = sorted(list(c_values))
     xmin = float("inf")
     xmax = float("-inf")
+    ymin = float("inf")
+    ymax = float("-inf")
     for ci, c in enumerate(c_values_list):
         plot_x = []
         plot_y = []
@@ -85,15 +87,21 @@ def plot_metrics(
         if len(plot_err) > 0:
             plot_err = [e * 1.96 for e in plot_err]  # 95% confidence interval
             ax.plot(plot_x, plot_y, label=f"c={c}", color=colors[ci])
+            plot_err_l = [y - e for y, e in zip(plot_y, plot_err)]
+            plot_err_u = [y + e for y, e in zip(plot_y, plot_err)]
             ax.fill_between(
                 plot_x,
-                [y - e for y, e in zip(plot_y, plot_err)],  # type: ignore
-                [y + e for y, e in zip(plot_y, plot_err)],  # type: ignore
+                plot_err_l,  # type: ignore
+                plot_err_u,  # type: ignore
                 color=colors[ci],
                 alpha=0.2,
             )
+            ymin = min(ymin, min(plot_err_l))
+            ymax = max(ymax, max(plot_err_u))
         else:
             ax.plot(plot_x, plot_y, "o-", label=f"c={c}", color=colors[ci])
+            ymin = min(ymin, min(plot_y))
+            ymax = max(ymax, max(plot_y))
         xmin = min(xmin, min(plot_x))
         xmax = max(xmax, max(plot_x))
 
@@ -125,6 +133,10 @@ def plot_metrics(
 
     if xmin != xmax:
         ax.set_xlim(xmin, xmax)
+
+    ylim_min = ymin - 0.15 * (ymax - ymin)
+    ylim_max = ymax + 0.15 * (ymax - ymin)
+    ax.set_ylim(ylim_min, ylim_max)
 
     if save_path is not None:
         fig.savefig(save_path, bbox_inches="tight", dpi=600)
@@ -210,12 +222,14 @@ def plot_convergence(
                 ), "hypothesis_history is None"
                 things_to_plot = exp_result.D_bar
             assert things_to_plot is not None, "things_to_plot is None"
+            plot_x, plot_y = apply_sampling(
+                things_to_plot,
+                sampling_threshold,
+                sampling_exclude_initial,
+            )
             ax.plot(
-                *apply_sampling(
-                    things_to_plot,
-                    sampling_threshold,
-                    sampling_exclude_initial,
-                ),
+                plot_x,
+                plot_y,
                 label=f"c={c}",
                 color=colors[ci],
             )
