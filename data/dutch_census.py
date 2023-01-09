@@ -33,9 +33,7 @@ class DutchCensus(Preset):
     __file_local_path = os.path.join(
         os.path.dirname(__file__), "dutch_census_2001.csv"
     )
-    __file_remote_url = (
-        "https://www.dropbox.com/s/t5h8tg6l38m4jca/dutch_census_2001.csv?dl=1"
-    )
+    __file_remote_url = "https://b31.sharepoint.com/:x:/g/EUw9H6-gTWJPiB7HFr7qmWgB5xx-XSXz92hwOOXs52PXig?e=vtDfb4&download=1"
 
     def download(self):
         response = requests.get(self.__file_remote_url)

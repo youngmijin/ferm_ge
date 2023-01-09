@@ -33,9 +33,7 @@ class LawSchool(Preset):
     __file_local_path = os.path.join(
         os.path.dirname(__file__), "law_dataset.csv"
     )
-    __file_remote_url = (
-        "https://www.dropbox.com/s/x4ay9lp28mtr0bw/law_dataset.csv?dl=1"
-    )
+    __file_remote_url = "https://b31.sharepoint.com/:x:/g/EaxpG0Gd-tZGiS6n4h11lkYBP3oAcTC3LieLiNmxU8pJdg?e=9vOEBj&download=1"
 
     def download(self):
         response = requests.get(self.__file_remote_url)

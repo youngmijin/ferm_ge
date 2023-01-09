@@ -31,9 +31,7 @@ class Adult(Preset):
         return BinaryLogisticClassificationTask
 
     __file_local_path = os.path.join(os.path.dirname(__file__), "adult.csv")
-    __file_remote_url = (
-        "https://www.dropbox.com/s/h0nlmmcxe5n1dde/adult.csv?dl=1"
-    )
+    __file_remote_url = "https://b31.sharepoint.com/:x:/g/ES-9TvClbj1ElsZOgMjiZQsBkFRNqLk0Sp1HUPPwC7yInA?e=xdCLvM&download=1"
 
     def download(self):
         response = requests.get(self.__file_remote_url)

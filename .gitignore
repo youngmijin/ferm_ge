@@ -29,6 +29,6 @@ data/*
 output/
 
 ### Misc ###
-*.sh
+*.rb
 *.pdf
 *.zip
