@@ -11,12 +11,10 @@ from sklearn.preprocessing import OneHotEncoder, StandardScaler
 from .dataset import Dataset
 
 
-class Adult(Dataset):
+class COMPAS(Dataset):
     """
-    Kohavi, R. (1996).
-    Scaling up the accuracy of Naive-Bayes classifiers: a decision-tree hybrid.
-    In Proceedings of the 2nd International Conference on Knowledge Discovery
-    and Data mining, Portland, 1996 (pp. 202–207).
+    Angwin, J., Larson, J., Mattu, S., & Kirchner, L. (2016).
+    Machine bias. ProPublica, May, 23.
     """
 
     def __init__(self):
@@ -25,11 +23,11 @@ class Adult(Dataset):
         self.X_test: NDArray[np.float_] | None = None
         self.y_test: NDArray[np.float_] | None = None
 
-        self.group_1_name = "female"
+        self.group_1_name = "African-American"
         self.group_1_train_indices: NDArray[np.intp] | None = None
         self.group_1_test_indices: NDArray[np.intp] | None = None
 
-        self.group_2_name = "male"
+        self.group_2_name = "Caucasian"
         self.group_2_train_indices: NDArray[np.intp] | None = None
         self.group_2_test_indices: NDArray[np.intp] | None = None
 
@@ -37,10 +35,12 @@ class Adult(Dataset):
 
     @property
     def name(self) -> str:
-        return "adult"
+        return "compas"
 
-    __file_local_path = os.path.join(os.path.dirname(__file__), "adult.csv")
-    __file_remote_url = "https://b31.sharepoint.com/:x:/g/ES-9TvClbj1ElsZOgMjiZQsBkFRNqLk0Sp1HUPPwC7yInA?e=xdCLvM&download=1"
+    __file_local_path = os.path.join(
+        os.path.dirname(__file__), "compas_scores_two_years.csv"
+    )
+    __file_remote_url = "https://b31.sharepoint.com/:x:/g/ETJqjlIrvvZGq98Knhmzc40Blx_z4fAC6AwiLExZbcRjgw?e=waxU8M&download=1"
 
     def download(self):
         response = requests.get(self.__file_remote_url)
@@ -55,37 +55,57 @@ class Adult(Dataset):
         if not self.check_files():
             self.download()
 
-        adult = pd.read_csv(self.__file_local_path)
-        adult = adult.drop(columns=["fnlwgt"])
-        adult = adult.replace({"?": np.nan})
-        adult = adult.dropna()
-        adult = adult.replace({"<=50K": 0, ">50K": 1})
-        adult = adult.reset_index(drop=True)
+        compas = pd.read_csv(self.__file_local_path)
+        compas = compas.dropna()
+        compas = compas[compas["days_b_screening_arrest"] <= 30]
+        compas = compas[compas["days_b_screening_arrest"] >= -30]
+        compas = compas[compas["is_recid"] != -1]
+        compas = compas[compas["c_charge_degree"] != "O"]
+        compas = compas[compas["score_text"] != "N/A"]
+        compas = compas[compas["race"] in ["African-American", "Caucasian"]]
+        compas = compas[
+            [
+                "age",
+                "c_charge_degree",
+                "race",
+                "age_cat",
+                "score_text",
+                "sex",
+                "priors_count",
+                "days_b_screening_arrest",
+                "decile_score",
+                "is_recid",
+                "two_year_recid",
+                "c_jail_in",
+                "c_jail_out",
+            ]
+        ]
+        compas.replace(
+            {"score_text": {"Low": 0, "Medium": 1, "High": 1}}, inplace=True
+        )
 
-        X = adult.drop(columns=["income"])
-        y = adult["income"]
+        X = compas.drop(columns="score_text")
+        y = compas["score_text"]
 
         X_train, X_test, y_train, y_test = train_test_split(
             X, y, test_size=0.3, random_state=42
         )
 
         self.group_1_train_indices = X_train.index[  # type: ignore
-            X_train["gender"] == "Female"  # type: ignore
+            X_train["race"] == "African-American"  # type: ignore
         ].to_numpy()
         self.group_2_train_indices = X_train.index[  # type: ignore
-            X_train["gender"] != "Female"  # type: ignore
+            X_train["race"] == "Caucasian"  # type: ignore
         ].to_numpy()
 
         self.group_1_test_indices = X_test.index[  # type: ignore
-            X_test["gender"] == "Female"  # type: ignore
+            X_train["race"] == "African-American"  # type: ignore
         ].to_numpy()
         self.group_2_test_indices = X_test.index[  # type: ignore
-            X_test["gender"] != "Female"  # type: ignore
+            X_train["race"] == "Caucasian"  # type: ignore
         ].to_numpy()
 
-        categorical_features = X.select_dtypes(
-            include=["object", "bool"]
-        ).columns
+        categorical_features = X.select_dtypes(include=["object"]).columns
         categorical_transformer = OneHotEncoder(handle_unknown="ignore")
 
         numerical_features = X.select_dtypes(

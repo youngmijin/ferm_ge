@@ -8,14 +8,13 @@
   },
   "python.analysis.typeCheckingMode": "basic",
   "python.formatting.provider": "black",
+  "python.formatting.blackArgs": [
+    "--config=pyproject.toml"
+  ],
   "python.languageServer": "Pylance",
   "python.linting.enabled": true,
   "python.linting.mypyEnabled": true,
   "python.linting.mypyArgs": [
-    "--follow-imports=normal",
-    "--show-column-numbers",
-    "--no-pretty",
-    "--ignore-missing-imports",
-    "--check-untyped-defs"
+    "--config-file=pyproject.toml"
   ]
 }

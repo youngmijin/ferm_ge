@@ -1,18 +1,15 @@
 import numpy as np
 from numba import njit
+from numpy.typing import NDArray
 
 
 @njit
 def ge(
     alpha: float,
-    b: np.ndarray,
-    fraction_x: np.ndarray,
+    b: NDArray[np.float_],
+    fraction_x: NDArray[np.float_],
 ) -> float:
-    """
-    Calculate generalized entropy (I_alpha)
-    Note that we call P_x as fraction_x here.
-    (reference: definition 4.1 at section 4.1 in the paper)
-    """
+    """Calculates generalized entropy (I_alpha)"""
 
     assert b.ndim == 1 and fraction_x.ndim == 1
     assert len(b) == len(fraction_x)
@@ -32,11 +29,10 @@ def ge(
         )
 
 
-@njit
 def ge_confmat(
     alpha: float, c: float, a: float, tn: float, fp: float, fn: float, tp: float
 ) -> float:
-    """Calculate I_alpha using given confusion matrix"""
+    """Calculates generalized entropy (I_alpha) using given confusion matrix"""
 
     b_stat = np.array([c, c - a, c + a])
     fraction_x = np.array(

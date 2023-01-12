@@ -1,135 +1,199 @@
-import time
 import warnings
-from typing import Callable, Dict, List, Optional, Tuple, Union
 
-import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib._color_data import BASE_COLORS, CSS4_COLORS
 from matplotlib.figure import Figure
+from numpy.typing import NDArray
 
-from .algorithm_gefair import GEFairResultSM
-from .experiment import BaselineValues
-from .metrics import Metrics
-from .utils import FrozenKey, apply_sampling, frozenkey_to_paramdict
+from .exp import ExpTestResult, ExpTrainResult, ParamSet
 
-matplotlib.rcParams["font.family"] = "serif"
+plt.rcParams["ps.useafm"] = True
+plt.rcParams["pdf.use14corefonts"] = True
+plt.rcParams["text.usetex"] = True
 
-default_color = "black"
-default_figsize = (4, 2.3)
+DEFAULT_FIGSIZE = (3, 1.5)
+DEFAULT_COLORS = ["black"]
+DEFAULT_STYLES = ["solid"]
 
 
-def plot_metrics(
-    exp_metrics: Dict[FrozenKey, Metrics],
-    metric_name: str,
-    params_filter: Callable[[Dict[str, float]], bool] = lambda _: True,
-    figsize: Tuple[float, float] = default_figsize,
-    color: Union[List[str], str] = default_color,
-    title: Optional[str] = None,
-    save_path: Optional[str] = None,
-    baseline: Optional[Dict[FrozenKey, BaselineValues]] = None,
-) -> Figure:
-    assert metric_name in ["I_alpha", "err"]
+def __check_arguments(
+    ps_list: list[ParamSet],
+    metric_names: str | list[str],
+    valid_metric_names: list[str],
+    colors: str | list[str],
+    styles: str | list[str],
+) -> tuple[list[str], list[str], list[str], list[float]]:
+    alpha_values = sorted(set([ps.alpha for ps in ps_list]))
+    c_values = sorted(set([ps.c for ps in ps_list]))
+    a_values = sorted(set([ps.a for ps in ps_list]))
 
-    experiments_to_draw: List[FrozenKey] = []
-    alpha_values = set()
-    c_values = set()
-    a_values = set()
-    for exp_key, exp_metric in exp_metrics.items():
-        param_dict = frozenkey_to_paramdict(exp_key)
-        if not params_filter(param_dict):
-            continue
-        experiments_to_draw.append(exp_key)
-        alpha_values.add(param_dict["alpha"])
-        c_values.add(param_dict["c"])
-        a_values.add(param_dict["a"])
+    if isinstance(metric_names, str):
+        metric_names = [metric_names]
+    for metric_name in metric_names:
+        assert (
+            metric_name in valid_metric_names
+        ), f"unknown metric name: {metric_name}"
+
+    if isinstance(colors, str):
+        colors = [colors] * len(c_values)
+    elif len(colors) == 1:
+        colors = colors * len(c_values)
+    else:
+        assert len(colors) >= len(c_values), "not enough colors"
+    for color in colors:
+        assert (
+            color in BASE_COLORS or color in CSS4_COLORS
+        ), f"unknown color: {color}"
+
+    if isinstance(styles, str):
+        styles = [styles] * len(metric_names)
+    elif len(styles) == 1:
+        styles = styles * len(metric_names)
+    else:
+        assert len(styles) >= len(metric_names), "not enough styles"
+    for style in styles:
+        assert style in [
+            "solid",
+            "dashed",
+            "dashdot",
+            "dotted",
+        ], f"unknown style: {style}"
 
     if len(alpha_values) > 1:
         warnings.warn(
-            f"Multiple values of alpha detected: {alpha_values}",
+            f"multiple values of alpha detected: {alpha_values}",
             UserWarning,
         )
     if len(a_values) > 1:
-        warnings.warn(f"Multiple values of a detected: {a_values}", UserWarning)
+        warnings.warn(f"multiple values of a detected: {a_values}", UserWarning)
+
+    return metric_names, colors, styles, c_values
+
+
+def __resample(
+    array: NDArray[np.float_],
+    sampling_threshold: int | None = 2000000,
+    sampling_exclude_initial: int = 10000,
+) -> tuple[np.ndarray, np.ndarray]:
+    assert array.ndim == 1, "array must be 1D array"
+    if sampling_threshold is None or len(array) <= sampling_threshold:
+        return np.arange(len(array)), array
+    else:
+        former_x = np.arange(sampling_exclude_initial)
+        former_y = array[:sampling_exclude_initial]
+        latter_x = np.arange(
+            sampling_exclude_initial,
+            len(array),
+            len(array) // sampling_threshold,
+        )
+        latter_y = array[
+            sampling_exclude_initial :: len(array) // sampling_threshold
+        ]
+        return (
+            np.concatenate([former_x, latter_x]),
+            np.concatenate([former_y, latter_y]),
+        )
+
+
+def plot_test_results_by_gamma(
+    results: dict[ParamSet, ExpTestResult],
+    metric_names: str | list[str],
+    baselines: dict[ParamSet, dict[str, float]] | None = None,
+    fname: str | None = None,
+    figsize: tuple[float, float] = DEFAULT_FIGSIZE,
+    colors: str | list[str] = DEFAULT_COLORS,
+    styles: str | list[str] = DEFAULT_STYLES,
+) -> Figure:
+    ps_list = list(results.keys())
+    metric_names, colors, styles, c_values = __check_arguments(
+        ps_list,
+        metric_names,
+        ["ge", "err", "mseo", "aseo"],
+        colors,
+        styles,
+    )
 
     fig, ax = plt.subplots(figsize=figsize)
+    xmin, xmax = float("inf"), float("-inf")
+    ymin, ymax = float("inf"), float("-inf")
+    baselines_by_ci: dict[int, list[float]] = {}
+    for ci, c in enumerate(c_values):
+        for mi, metric_name in enumerate(metric_names):
+            data_x: list[float] = []
+            data_y: list[float] = []
+            data_e: list[float] = []
+            for ps, result in results.items():
+                if ps.c != c:
+                    continue
+                if metric_name == "ge":
+                    data_y.append(result.ge)
+                    data_e.append(result.ge_std)
+                elif metric_name == "err":
+                    data_y.append(result.err)
+                    data_e.append(result.err_std)
+                elif metric_name == "mseo":
+                    assert (
+                        result.mseo is not None and result.mseo_std is not None
+                    ), f"mseo is not available for {ps}"
+                    data_y.append(result.mseo)
+                    data_e.append(result.mseo_std)
+                elif metric_name == "aseo":
+                    assert (
+                        result.aseo is not None and result.aseo_std is not None
+                    ), f"aseo is not available for {ps}"
+                    data_y.append(result.aseo)
+                    data_e.append(result.aseo_std)
+                else:
+                    continue
+                data_x.append(ps.gamma)
 
-    if len(experiments_to_draw) == 0:
-        print("No metrics to draw.")
-        return fig
+                if baselines is not None:
+                    if ci not in baselines_by_ci:
+                        baselines_by_ci[ci] = []
+                    baselines_by_ci[ci].append(baselines[ps][metric_name])
 
-    if type(color) == str:
-        colors: List[str] = [color] * len(r_values)  # type: ignore
-    else:
-        assert len(color) >= len(
-            c_values
-        ), "Number of colors must match or higher than the number of r values"
-        colors = color  # type: ignore
+            data_e_upper = np.array(data_y) + np.array(data_e) * 1.96
+            data_e_lower = np.array(data_y) - np.array(data_e) * 1.96
 
-    c_values_list = sorted(list(c_values))
-    xmin = float("inf")
-    xmax = float("-inf")
-    ymin = float("inf")
-    ymax = float("-inf")
-    for ci, c in enumerate(c_values_list):
-        plot_x = []
-        plot_y = []
-        plot_err = []
-        for exp_key, exp_metric in exp_metrics.items():
-            if exp_key not in experiments_to_draw:
-                continue
-            param_dict = frozenkey_to_paramdict(exp_key)
-            if param_dict["c"] != c:
-                continue
-            plot_x.append(param_dict["gamma"])
-            plot_y.append(getattr(exp_metric, metric_name))
-            if getattr(exp_metric, f"{metric_name}_std") is not None:
-                plot_err.append(getattr(exp_metric, f"{metric_name}_std"))
-        if len(plot_err) > 0:
-            plot_err = [e * 1.96 for e in plot_err]  # 95% confidence interval
-            ax.plot(plot_x, plot_y, label=f"c={c}", color=colors[ci])
-            plot_err_l = [y - e for y, e in zip(plot_y, plot_err)]
-            plot_err_u = [y + e for y, e in zip(plot_y, plot_err)]
+            xmin = min(xmin, min(data_x))
+            xmax = max(xmax, max(data_x))
+            ymin = min(ymin, min(data_e_lower))
+            ymax = max(ymax, max(data_e_upper))
+
+            ax.plot(
+                data_x,
+                data_y,
+                label=(
+                    f"$c={c}$"
+                    if len(metric_names) == 1
+                    else f"{metric_name} $c={c}$"
+                ),
+                color=colors[ci],
+                linestyle=styles[mi],
+            )
             ax.fill_between(
-                plot_x,
-                plot_err_l,  # type: ignore
-                plot_err_u,  # type: ignore
+                data_x,
+                data_e_lower,  # type: ignore
+                data_e_upper,  # type: ignore
                 color=colors[ci],
                 alpha=0.2,
             )
-            ymin = min(ymin, min(plot_err_l))
-            ymax = max(ymax, max(plot_err_u))
-        else:
-            ax.plot(plot_x, plot_y, "o-", label=f"c={c}", color=colors[ci])
-            ymin = min(ymin, min(plot_y))
-            ymax = max(ymax, max(plot_y))
-        xmin = min(xmin, min(plot_x))
-        xmax = max(xmax, max(plot_x))
 
-    if baseline is not None:
-        baseline_dict = {}
-        for exp_key, baseline_value in baseline.items():
-            if exp_key not in experiments_to_draw:
-                continue
-            param_dict = frozenkey_to_paramdict(exp_key)
-            baseline_dict[param_dict["c"]] = getattr(
-                baseline_value, metric_name
-            )
-
-        for ci, c in enumerate(c_values_list):
-            assert c in baseline_dict, f"Missing baseline for c={c}"
-            baseline_value = baseline_dict[c]
+    for ci, baseline_values in baselines_by_ci.items():
+        for baseline_value in set(baseline_values):
             ax.axhline(
-                baseline_value, linestyle="--", color=colors[ci], alpha=0.4
+                baseline_value,
+                color=colors[ci],
+                linestyle="--",
+                alpha=0.4,
             )
 
-    if len(c_values) > 1:
-        if metric_name == "I_alpha":
+    if (len(c_values) * len(metric_names)) > 1:
+        if "ge" in metric_names:
             ax.legend(loc="lower right")
-        elif metric_name == "err":
+        else:
             ax.legend(loc="upper right")
-
-    if title is not None:
-        ax.set_title(title)
 
     if xmin != xmax:
         ax.set_xlim(xmin, xmax)
@@ -138,112 +202,82 @@ def plot_metrics(
     ylim_max = ymax + 0.15 * (ymax - ymin)
     ax.set_ylim(ylim_min, ylim_max)
 
-    if save_path is not None:
-        fig.savefig(save_path, bbox_inches="tight", dpi=600)
+    if fname is not None:
+        fig.savefig(fname, bbox_inches="tight", pad_inches=0, dpi=600)
 
     return fig
 
 
-def plot_convergence(
-    exp_results: Dict[FrozenKey, GEFairResultSM],
-    metric_name: str,
-    params_filter: Callable[[Dict[str, float]], bool] = lambda _: True,
-    figsize: Tuple[float, float] = default_figsize,
-    color: Union[List[str], str] = default_color,
-    title: Optional[str] = None,
-    save_path: Optional[str] = None,
-    sampling_threshold: Optional[int] = 2000000,
-    sampling_exclude_initial: int = 10000,
-    magnify: Optional[Tuple[float, float]] = None,
-    highlight_range: Optional[Tuple[float, float]] = None,
+def plot_training_traces(
+    results: dict[ParamSet, ExpTrainResult],
+    metric_names: str | list[str],
+    magnify: tuple[float, float] | None = None,
+    fname: str | None = None,
+    figsize: tuple[float, float] = DEFAULT_FIGSIZE,
+    colors: str | list[str] = DEFAULT_COLORS,
+    styles: str | list[str] = DEFAULT_STYLES,
 ) -> Figure:
-    """Plot trace of metrics during training, using time-axis averaging"""
-
-    assert metric_name in ["I_alpha", "err", "threshold", "hypothesis"]
-
-    experiments_to_draw: List[FrozenKey] = []
-    alpha_values = set()
-    c_values = set()
-    a_values = set()
-    for exp_key in exp_results.keys():
-        param_dict = {k: v for k, v in list(exp_key)}
-        if not params_filter(param_dict):
-            continue
-        experiments_to_draw.append(exp_key)
-        alpha_values.add(param_dict["alpha"])
-        c_values.add(param_dict["c"])
-        a_values.add(param_dict["a"])
-
-    if len(alpha_values) > 1:
-        warnings.warn(
-            f"Multiple values of alpha detected: {alpha_values}",
-            UserWarning,
-        )
-    if len(a_values) > 1:
-        warnings.warn(f"Multiple values of a detected: {a_values}", UserWarning)
+    ps_list = list(results.keys())
+    metric_names, colors, styles, c_values = __check_arguments(
+        ps_list,
+        metric_names,
+        ["ge_bar", "err_bar", "mseo", "aseo"],
+        colors,
+        styles,
+    )
 
     fig, ax = plt.subplots(figsize=figsize)
+    for ci, c in enumerate(c_values):
+        for mi, metric_name in enumerate(metric_names):
+            for ps, result in results.items():
+                if ps.c != c:
+                    continue
+                data: NDArray[np.float_] | None = None
+                if metric_name == "ge_bar":
+                    assert (
+                        result.ge_bar_trace is not None
+                    ), f"ge_bar_trace is not available for {ps}"
+                    data = result.ge_bar_trace
+                elif metric_name == "err_bar":
+                    assert (
+                        result.err_bar_trace is not None
+                    ), f"err_bar_trace is not available for {ps}"
+                    data = result.err_bar_trace
+                elif metric_name == "mseo":
+                    assert (
+                        result.mseo_trace is not None
+                    ), f"mseo_trace is not available for {ps}"
+                    data = result.mseo_trace
+                elif metric_name == "aseo":
+                    assert (
+                        result.aseo_trace is not None
+                    ), f"aseo_trace is not available for {ps}"
+                    data = result.aseo_trace
+                if data is None:
+                    continue
+                xs, ys = __resample(data)
+                ax.plot(
+                    xs,
+                    ys,
+                    label=(
+                        f"$c={c}$"
+                        if len(metric_names) == 1
+                        else f"{metric_name} $c={c}$"
+                    ),
+                    color=colors[ci],
+                    linestyle=styles[mi],
+                )
 
-    if len(experiments_to_draw) == 0:
-        print("No metrics to draw.")
-        return fig
-
-    if highlight_range is not None:
-        ax.axvspan(*highlight_range, color="bisque")
-
-    if type(color) == str:
-        colors: List[str] = [color] * len(r_values)  # type: ignore
-    else:
-        assert len(color) >= len(
-            c_values
-        ), "Number of colors must match or higher than the number of experiments"
-        colors = color  # type: ignore
-
-    c_values_list = sorted(list(c_values))
-    for ci, c in enumerate(c_values_list):
-        for exp_key, exp_result in exp_results.items():
-            if exp_key not in experiments_to_draw:
-                continue
-            param_dict = {k: v for k, v in list(exp_key)}
-            if param_dict["c"] != c:
-                continue
-            things_to_plot: Optional[np.ndarray] = None
-            if metric_name == "I_alpha":
-                assert (
-                    exp_result.I_alpha_bar is not None
-                ), "I_alpha_history is None"
-                things_to_plot = exp_result.I_alpha_bar
-            elif metric_name == "err":
-                assert exp_result.err_bar is not None, "err_history is None"
-                things_to_plot = exp_result.err_bar
-            elif metric_name == "threshold" or metric_name == "hypothesis":
-                assert (
-                    exp_result.D_bar is not None
-                ), "hypothesis_history is None"
-                things_to_plot = exp_result.D_bar
-            assert things_to_plot is not None, "things_to_plot is None"
-            plot_x, plot_y = apply_sampling(
-                things_to_plot,
-                sampling_threshold,
-                sampling_exclude_initial,
-            )
-            ax.plot(
-                plot_x,
-                plot_y,
-                label=f"c={c}",
-                color=colors[ci],
-            )
-
-    if len(c_values) > 1:
-        ax.legend(loc="upper right")
+    if (len(c_values) * len(metric_names)) > 1:
+        if "ge_bar" in metric_names:
+            ax.legend(loc="lower right")
+        else:
+            ax.legend(loc="upper right")
 
     if magnify is not None:
         ax.set_xlim(*magnify)
 
-    if title is not None:
-        ax.set_title(title)
-
-    if save_path is not None:
-        fig.savefig(save_path, bbox_inches="tight", dpi=600)
+    if fname is not None:
+        fig.savefig(fname, bbox_inches="tight", pad_inches=0, dpi=600)
 
     return fig

@@ -18,8 +18,7 @@ __pycache__/
 .ipynb_checkpoints
 */.ipynb_checkpoints/*
 *.ipynb
-!plot.ipynb
-!mini.ipynb
+!example.ipynb
 
 ### Data ###
 data/*
@@ -31,4 +30,6 @@ output/
 ### Misc ###
 *.rb
 *.pdf
+*.pkl
+*.yaml
 *.zip
