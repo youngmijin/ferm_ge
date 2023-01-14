@@ -1,17 +1,18 @@
+**A Fair Empirical Risk Minimization with Generalized Entropy**
+---------------------------------------------------------------
+
 This repository contains an official implementation of the paper:
-    A Fair Empirical Risk Minimization with Generalized Entropy
-    https://arxiv.org/abs/2202.11966
+https://arxiv.org/abs/2202.11966
 
----
+---------------------------------------------------------------
 
-REQUIREMENTS
+#### __REQUIREMENTS__
 
-- Python 3.10+
-- g++ supporting C++11
+* Python 3.10+
+* g++ supporting C++11
 
----
 
-USAGE
+#### __USAGE__
 
 1. Install dependencies
 
@@ -27,10 +28,9 @@ USAGE
 
 Type `main.py -h` for more options.
 
----
 
-NOTE
+#### __NOTE__
 
-- This code is not optimized for space efficiency. It may require a lot of memory.
-- Running time varies depending on the parameters. It may take a few seconds to an hour.
-- Feel free to leave an issue if you have any questions.
+* This code is not optimized for space efficiency. It may require a lot of memory.
+* Running time varies depending on the parameters. It may take a few seconds to an hour.
+* Feel free to leave an issue if you have any questions.
