@@ -7,7 +7,8 @@ using std::random_device;
 using std::uniform_real_distribution;
 
 typedef struct {
-  size_t T;  // Number of iterations
+  size_t T;                // Number of iterations
+  size_t thr_granularity;  // Number of threshold candidates
 
   double D_bar;       // Time-averaged hypothesis values
   double lambda_bar;  // Time-averaged lambda values
@@ -119,6 +120,7 @@ C_GEFAIR_RESULT *solve_gefair(size_t thr_candidates_len, double *thr_candidates,
 
   auto result = (C_GEFAIR_RESULT *)malloc(sizeof(C_GEFAIR_RESULT));
   result->T = T;
+  result->thr_granularity = thr_candidates_len;
   result->D_bar = hyp_sum / T;
   result->lambda_bar = lambda_sum / T;
   result->hypi_stat = hypi_stat;

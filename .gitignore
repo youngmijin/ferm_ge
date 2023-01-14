@@ -8,17 +8,12 @@ __pycache__/
 ### Visual Studio Code ###
 .vscode/*
 !.vscode/settings.json
-!.vscode/tasks.json
-!.vscode/launch.json
 !.vscode/extensions.json
-!.vscode/*.code-snippets
-*.code-workspace
 
 ### Jupyter Notebooks ###
 .ipynb_checkpoints
 */.ipynb_checkpoints/*
 *.ipynb
-!example.ipynb
 
 ### Data ###
 data/*

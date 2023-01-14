@@ -1,20 +1,33 @@
 {
-  "editor.formatOnSave": true,
   "editor.codeActionsOnSave": {
     "source.organizeImports": true
   },
+  "editor.indentSize": "tabSize",
+  "editor.insertSpaces": true,
+  "editor.formatOnSave": true,
+  "editor.trimAutoWhitespace": true,
+  "files.encoding": "utf8",
+  "files.eol": "\n",
+  "files.insertFinalNewline": true,
+  "files.trimFinalNewlines": true,
   "python.analysis.diagnosticSeverityOverrides": {
     "reportUnsupportedDunderAll": "none"
   },
   "python.analysis.typeCheckingMode": "basic",
-  "python.formatting.provider": "black",
   "python.formatting.blackArgs": [
     "--config=pyproject.toml"
   ],
+  "python.formatting.provider": "black",
   "python.languageServer": "Pylance",
   "python.linting.enabled": true,
-  "python.linting.mypyEnabled": true,
   "python.linting.mypyArgs": [
     "--config-file=pyproject.toml"
-  ]
+  ],
+  "python.linting.mypyEnabled": true,
+  "[python]": {
+    "editor.tabSize": 4,
+  },
+  "[cpp]": {
+    "editor.tabSize": 2,
+  }
 }

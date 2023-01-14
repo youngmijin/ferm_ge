@@ -16,6 +16,7 @@ class C_GEFAIR_RESULT(ctypes.Structure):
 
 C_GEFAIR_RESULT._fields_ = [
     ("T", ctypes.c_size_t),
+    ("thr_granularity", ctypes.c_size_t),
     ("D_bar", ctypes.c_double),
     ("lambda_bar", ctypes.c_double),
     ("hypi_stat", ctypes.POINTER(ctypes.c_size_t)),
@@ -28,12 +29,9 @@ class GEFairResult:
 
     def __init__(
         self,
-        thr_candidates: list[float],
         c_result_p: ctypes.c_void_p,
         free_fn: Callable[[ctypes.c_void_p], None],
     ):
-        self.thr_candidates = thr_candidates
-
         self.c_result_p = c_result_p
         self.c_result = C_GEFAIR_RESULT.from_address(c_result_p)  # type: ignore
 
@@ -47,6 +45,10 @@ class GEFairResult:
         return int(self.c_result.T)
 
     @property
+    def thr_granularity(self) -> int:
+        return int(self.c_result.thr_granularity)
+
+    @property
     def D_bar(self) -> float:
         return float(self.c_result.D_bar)
 
@@ -55,10 +57,16 @@ class GEFairResult:
         return float(self.c_result.lambda_bar)
 
     @cached_property
-    def hyp_stat(self) -> dict[float, int]:
+    def hypi_stat(self) -> dict[int, int]:
         return {
-            thr: int(self.c_result.hypi_stat[i])
-            for i, thr in enumerate(self.thr_candidates)
+            i: int(stat)
+            for i, stat in enumerate(
+                npct.as_array(
+                    self.c_result.hypi_stat,
+                    (self.thr_granularity,),
+                ).astype(int)
+            )
+            if stat > 0
         }
 
     @property
@@ -132,7 +140,6 @@ class GEFairSolver:
             ctypes.c_double(a),
         )
         return GEFairResult(
-            thr_candidates,
             result_struct_p,
             self.lib.free_gefair_result,
         )
