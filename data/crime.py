@@ -11,19 +11,13 @@ from sklearn.preprocessing import OneHotEncoder, StandardScaler
 from .dataset import Dataset
 
 
-class COMPAS(Dataset):
+class CommunitiesAndCrime(Dataset):
     """
-    Angwin, J., Larson, J., Mattu, S., & Kirchner, L. (2016).
-    Machine bias. ProPublica, May, 23.
+    Redmond, M. (2017).
+    U.S. Department of Commerce, Bureau of the Census, Census Of Population And Housing 1990 United States: Summary Tape File 1a & 3a (Computer Files), U.S. Department Of Commerce, Bureau Of The Census Producer, Washington, DC and Inter-university Consortium for Political and Social Research Ann Arbor, Michigan. (1992), U.S. Department of Justice, Bureau of Justice Statistics, Law Enforcement Management And Administrative Statistics (Computer File) U.S. Department Of Commerce, Bureau Of The Census Producer, Washington, DC and Inter-university Consortium for Political and Social Research Ann Arbor, Michigan. (1992), U.S. Department of Justice, Federal Bureau of Investigation, Crime in the United States (Computer File) (1995), Redmond, M. A. and A. Baveja: A Data-Driven Software Tool for Enabling Cooperative Information Sharing Among Police Departments. European Journal of Operational Research 141 (2002) 660-678.
     """
 
     def __init__(self):
-        warnings.warn(
-            "The COMPAS dataset may cause overfitting. Consider using the "
-            "blc_max_iter argument to limit the number of fitting iterations.",
-            UserWarning,
-        )
-
         self.X_train: NDArray[np.float_] | None = None
         self.y_train: NDArray[np.float_] | None = None
         self.X_valid: NDArray[np.float_] | None = None
@@ -33,55 +27,79 @@ class COMPAS(Dataset):
         self.group_1_train_indices: NDArray[np.intp] | None = None
         self.group_1_valid_indices: NDArray[np.intp] | None = None
 
-        self.group_2_name = "Caucasian"
+        self.group_2_name = "Non-African-American"
         self.group_2_train_indices: NDArray[np.intp] | None = None
         self.group_2_valid_indices: NDArray[np.intp] | None = None
 
     @property
     def name(self) -> str:
-        return "compas"
+        return "crime"
 
     @property
     def file_local_path(self) -> str:
-        return os.path.join(
-            os.path.dirname(__file__), "compas_scores_two_years.csv"
-        )
+        return os.path.join(os.path.dirname(__file__), "crimedata.csv")
 
     @property
     def file_remote_url(self) -> str:
-        return "https://b31.sharepoint.com/:x:/g/ETJqjlIrvvZGq98Knhmzc40Blx_z4fAC6AwiLExZbcRjgw?e=waxU8M&download=1"
+        return "https://b31.sharepoint.com/:x:/g/EYVchXteXn9Gg9QUb2QQbOMBpsT-FZA6CKvuNKK8YRy90A?e=mftpOt&download=1"
 
     @property
     def file_md5_hash(self) -> str:
-        return "9165d40c400bba93a8cffece2b74622b"
+        return "3ff412ab144c7096c1c10c63c24c089a"
 
     def load(self):
-        compas = pd.read_csv(self.file_local_path)
-        compas = compas[compas["days_b_screening_arrest"] <= 30]
-        compas = compas[compas["days_b_screening_arrest"] >= -30]
-        compas = compas[compas["is_recid"] != -1]
-        compas = compas[compas["c_charge_degree"] != "O"]
-        compas = compas[compas["score_text"] != "N/A"]
-        compas = compas[compas["race"].isin(["African-American", "Caucasian"])]
-        compas = compas[
+        crime = pd.read_csv(self.file_local_path)
+        crime = crime[
             [
-                "age",
-                "c_charge_degree",
-                "race",
-                "age_cat",
-                "score_text",
-                "sex",
-                "priors_count",
-                "days_b_screening_arrest",
-                "decile_score",
-                "is_recid",
-                "two_year_recid",
+                "racepctblack",
+                "pctWInvInc",
+                "pctWPubAsst",
+                "NumUnderPov",
+                "PctPopUnderPov",
+                "PctUnemployed",
+                "MalePctDivorce",
+                "FemalePctDiv",
+                "TotalPctDiv",
+                "PersPerFam",
+                "PctKids2Par",
+                "PctYoungKids2Par",
+                "PctTeen2Par",
+                "PctPersOwnOccup",
+                "HousVacant",
+                "PctHousOwnOcc",
+                "PctVacantBoarded",
+                "NumInShelters",
+                "NumStreet",
+                "ViolentCrimesPerPop",
             ]
         ]
-        compas = compas.dropna()
+        crime = crime.replace({"?": np.nan})
+        crime = crime.dropna()
 
-        X = compas.drop(columns="two_year_recid")
-        y = compas["two_year_recid"]
+        crime["ViolentCrimesPerPop"] = crime["ViolentCrimesPerPop"].astype(
+            float
+        )
+        crime_ViolentCrimesPerPop_max = crime["ViolentCrimesPerPop"].max()
+        crime_ViolentCrimesPerPop_min = crime["ViolentCrimesPerPop"].min()
+        crime["ViolentCrimesPerPop"] = (
+            crime["ViolentCrimesPerPop"] - crime_ViolentCrimesPerPop_min
+        ) / (crime_ViolentCrimesPerPop_max - crime_ViolentCrimesPerPop_min)
+
+        crime_ViolentCrimesPerPop_0_07_upper_loc = crime[
+            crime["ViolentCrimesPerPop"] >= 0.07
+        ].index
+        crime_ViolentCrimesPerPop_0_07_lower_loc = crime[
+            crime["ViolentCrimesPerPop"] < 0.07
+        ].index
+        crime.loc[
+            crime_ViolentCrimesPerPop_0_07_upper_loc, "ViolentCrimesPerPop"
+        ] = 1
+        crime.loc[
+            crime_ViolentCrimesPerPop_0_07_lower_loc, "ViolentCrimesPerPop"
+        ] = 0
+
+        X = crime.drop(columns="ViolentCrimesPerPop")
+        y = crime["ViolentCrimesPerPop"]
 
         X_train: pd.DataFrame
         X_valid: pd.DataFrame
@@ -97,17 +115,17 @@ class COMPAS(Dataset):
         y_valid = y_valid.reset_index(drop=True)
 
         self.group_1_train_indices = X_train.index[  # type: ignore
-            X_train["race"] == "African-American"  # type: ignore
+            X_train["racepctblack"] >= 0.06  # type: ignore
         ].to_numpy()
         self.group_2_train_indices = X_train.index[  # type: ignore
-            X_train["race"] == "Caucasian"  # type: ignore
+            X_train["racepctblack"] < 0.06  # type: ignore
         ].to_numpy()
 
         self.group_1_valid_indices = X_valid.index[  # type: ignore
-            X_valid["race"] == "African-American"  # type: ignore
+            X_valid["racepctblack"] >= 0.06  # type: ignore
         ].to_numpy()
         self.group_2_valid_indices = X_valid.index[  # type: ignore
-            X_valid["race"] == "Caucasian"  # type: ignore
+            X_valid["racepctblack"] < 0.06  # type: ignore
         ].to_numpy()
 
         categorical_features = X.select_dtypes(include=["object"]).columns
