@@ -26,6 +26,18 @@ class Cache(Generic[T, V]):
         return self._cache[self.__to_key(kwargs)]
 
 
+class FakePool:
+    def __init__(self, *args, **kwargs):
+        pass
+
+    def starmap(self, fn, args_list):
+        for args in args_list:
+            yield fn(*args)
+
+    def close(self):
+        pass
+
+
 @njit
 def get_time_averaged_trace(
     hypi_t: NDArray[np.intp],

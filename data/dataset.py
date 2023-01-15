@@ -57,7 +57,7 @@ class Dataset(ABC):
 
     @property
     @abstractmethod
-    def test_data(self) -> tuple[NDArray[np.float_], NDArray[np.float_]]:
+    def valid_data(self) -> tuple[NDArray[np.float_], NDArray[np.float_]]:
         pass
 
     @property
@@ -67,5 +67,5 @@ class Dataset(ABC):
 
     @property
     @abstractmethod
-    def test_group_indices(self) -> dict[str, NDArray[np.intp]]:
+    def valid_group_indices(self) -> dict[str, NDArray[np.intp]]:
         pass

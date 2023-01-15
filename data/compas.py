@@ -1,4 +1,5 @@
 import os
+import warnings
 
 import numpy as np
 import pandas as pd
@@ -17,18 +18,24 @@ class COMPAS(Dataset):
     """
 
     def __init__(self):
+        warnings.warn(
+            "The COMPAS dataset may cause overfitting. Consider using the "
+            "blc_max_iter argument to limit the number of fitting iterations.",
+            UserWarning,
+        )
+
         self.X_train: NDArray[np.float_] | None = None
         self.y_train: NDArray[np.float_] | None = None
-        self.X_test: NDArray[np.float_] | None = None
-        self.y_test: NDArray[np.float_] | None = None
+        self.X_valid: NDArray[np.float_] | None = None
+        self.y_valid: NDArray[np.float_] | None = None
 
         self.group_1_name = "African-American"
         self.group_1_train_indices: NDArray[np.intp] | None = None
-        self.group_1_test_indices: NDArray[np.intp] | None = None
+        self.group_1_valid_indices: NDArray[np.intp] | None = None
 
         self.group_2_name = "Caucasian"
         self.group_2_train_indices: NDArray[np.intp] | None = None
-        self.group_2_test_indices: NDArray[np.intp] | None = None
+        self.group_2_valid_indices: NDArray[np.intp] | None = None
 
     @property
     def name(self) -> str:
@@ -76,21 +83,21 @@ class COMPAS(Dataset):
             {"score_text": {"Low": 0, "Medium": 1, "High": 1}}, inplace=True
         )
 
-        X = compas.drop(columns="score_text")
-        y = compas["score_text"]
+        X = compas.drop(columns="two_year_recid")
+        y = compas["two_year_recid"]
 
         X_train: pd.DataFrame
-        X_test: pd.DataFrame
+        X_valid: pd.DataFrame
         y_train: pd.Series
-        y_test: pd.Series
-        X_train, X_test, y_train, y_test = train_test_split(
+        y_valid: pd.Series
+        X_train, X_valid, y_train, y_valid = train_test_split(
             X, y, test_size=0.3, random_state=42
         )  # type: ignore
 
         X_train = X_train.reset_index(drop=True)
-        X_test = X_test.reset_index(drop=True)
+        X_valid = X_valid.reset_index(drop=True)
         y_train = y_train.reset_index(drop=True)
-        y_test = y_test.reset_index(drop=True)
+        y_valid = y_valid.reset_index(drop=True)
 
         self.group_1_train_indices = X_train.index[  # type: ignore
             X_train["race"] == "African-American"  # type: ignore
@@ -99,11 +106,11 @@ class COMPAS(Dataset):
             X_train["race"] == "Caucasian"  # type: ignore
         ].to_numpy()
 
-        self.group_1_test_indices = X_test.index[  # type: ignore
-            X_test["race"] == "African-American"  # type: ignore
+        self.group_1_valid_indices = X_valid.index[  # type: ignore
+            X_valid["race"] == "African-American"  # type: ignore
         ].to_numpy()
-        self.group_2_test_indices = X_test.index[  # type: ignore
-            X_test["race"] == "Caucasian"  # type: ignore
+        self.group_2_valid_indices = X_valid.index[  # type: ignore
+            X_valid["race"] == "Caucasian"  # type: ignore
         ].to_numpy()
 
         categorical_features = X.select_dtypes(include=["object"]).columns
@@ -122,10 +129,10 @@ class COMPAS(Dataset):
         )
 
         self.X_train = preprocessor.fit_transform(X_train)  # type: ignore
-        self.X_test = preprocessor.transform(X_test)  # type: ignore
+        self.X_valid = preprocessor.transform(X_valid)  # type: ignore
 
         self.y_train = y_train.to_numpy()  # type: ignore
-        self.y_test = y_test.to_numpy()  # type: ignore
+        self.y_valid = y_valid.to_numpy()  # type: ignore
 
     @property
     def train_data(self) -> tuple[NDArray[np.float_], NDArray[np.float_]]:
@@ -134,10 +141,10 @@ class COMPAS(Dataset):
         return self.X_train, self.y_train
 
     @property
-    def test_data(self) -> tuple[NDArray[np.float_], NDArray[np.float_]]:
-        assert self.X_test is not None, "X_test is not loaded"
-        assert self.y_test is not None, "y_test is not loaded"
-        return self.X_test, self.y_test
+    def valid_data(self) -> tuple[NDArray[np.float_], NDArray[np.float_]]:
+        assert self.X_valid is not None, "X_valid is not loaded"
+        assert self.y_valid is not None, "y_valid is not loaded"
+        return self.X_valid, self.y_valid
 
     @property
     def train_group_indices(self) -> dict[str, NDArray[np.intp]]:
@@ -153,14 +160,14 @@ class COMPAS(Dataset):
         }
 
     @property
-    def test_group_indices(self) -> dict[str, NDArray[np.intp]]:
+    def valid_group_indices(self) -> dict[str, NDArray[np.intp]]:
         assert (
-            self.group_1_test_indices is not None
-        ), "group_1_test_indices is not loaded"
+            self.group_1_valid_indices is not None
+        ), "group_1_valid_indices is not loaded"
         assert (
-            self.group_2_test_indices is not None
-        ), "group_2_test_indices is not loaded"
+            self.group_2_valid_indices is not None
+        ), "group_2_valid_indices is not loaded"
         return {
-            self.group_1_name: self.group_1_test_indices,
-            self.group_2_name: self.group_2_test_indices,
+            self.group_1_name: self.group_1_valid_indices,
+            self.group_2_name: self.group_2_valid_indices,
         }

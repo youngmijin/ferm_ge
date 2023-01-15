@@ -1,3 +1,4 @@
+import statistics
 import warnings
 from collections import defaultdict
 
@@ -6,11 +7,7 @@ import numpy as np
 from matplotlib.figure import Figure
 from numpy.typing import NDArray
 
-from ferm_ge import ExpTestResult, ExpTrainResult, ParamSet
-
-plt.rcParams["ps.useafm"] = True
-plt.rcParams["pdf.use14corefonts"] = True
-plt.rcParams["text.usetex"] = True
+from ferm_ge import ExpTrainResult, ExpValidResult, ParamSet
 
 DEFAULT_FIGSIZE = (3, 1.5)
 DEFAULT_LINECOLOR = "black"
@@ -31,6 +28,7 @@ def __check_arguments(
     ps_list: list[ParamSet],
     metric_names: list[str],
     valid_metric_names: list[str],
+    use_tex: bool,
 ) -> tuple[list[str], list[float]]:
     alpha_values = sorted(set([ps.alpha for ps in ps_list]))
     c_values = sorted(set([ps.c for ps in ps_list]))
@@ -51,6 +49,11 @@ def __check_arguments(
     if len(a_values) > 1:
         warnings.warn(f"multiple values of a detected: {a_values}", UserWarning)
 
+    if use_tex:
+        plt.rcParams["ps.useafm"] = True
+        plt.rcParams["pdf.use14corefonts"] = True
+        plt.rcParams["text.usetex"] = True
+
     return metric_names, c_values
 
 
@@ -63,6 +66,7 @@ def __resample(
     if sampling_threshold is None or len(array) <= sampling_threshold:
         return np.arange(len(array)), array
     else:
+        assert sampling_threshold > 0, "sampling_threshold must be positive"
         former_x = np.arange(exclude_first)
         former_y = array[:exclude_first]
         latter_x = np.arange(
@@ -77,21 +81,29 @@ def __resample(
         )
 
 
-def plot_test_results_by_gamma_c(
-    results: dict[ParamSet, ExpTestResult],
+def plot_valid_results_by_gamma_c(
+    results: dict[ParamSet, ExpValidResult],
     metrics: list[str],
     metrics_right: list[str] = [],
     baselines: dict[ParamSet, dict[str, float]] | None = None,
+    confidence_band: float = 0.0,
     figsize: tuple[float, float] = DEFAULT_FIGSIZE,
     coloring_rules: defaultdict[str, str | None] = defaultdict(lambda: None),
     styling_rules: defaultdict[str, str | None] = defaultdict(lambda: None),
+    use_tex: bool = False,
 ) -> Figure:
     ps_list = list(results.keys())
     metrics, c_values = __check_arguments(
         ps_list,
         metrics,
         ["ge", "err", "mseo", "aseo", "v"],
+        use_tex,
     )
+
+    assert (
+        confidence_band >= 0 and confidence_band < 1
+    ), "confidence_band must be in [0, 1)"
+    z_value = statistics.NormalDist().inv_cdf((1 + confidence_band) / 2)
 
     fig, axl = plt.subplots(figsize=figsize)
     axr = axl.twinx() if len(metrics_right) > 0 else axl
@@ -154,8 +166,8 @@ def plot_test_results_by_gamma_c(
                             baselines[ps][metric_name]
                         )
 
-            data_e_upper = np.array(data_y) + np.array(data_e) * 1.96
-            data_e_lower = np.array(data_y) - np.array(data_e) * 1.96
+            data_e_upper = np.array(data_y) + np.array(data_e) * z_value
+            data_e_lower = np.array(data_y) - np.array(data_e) * z_value
 
             xmin = min(xmin, min(data_x))
             xmax = max(xmax, max(data_x))
@@ -193,13 +205,14 @@ def plot_test_results_by_gamma_c(
                 color=plot_color,
                 linestyle=plot_linestyle,
             )
-            (axr if metric_name in metrics_right else axl).fill_between(
-                data_x,
-                data_e_lower,  # type: ignore
-                data_e_upper,  # type: ignore
-                color=plot_color,
-                alpha=0.2,
-            )
+            if confidence_band > 0:
+                (axr if metric_name in metrics_right else axl).fill_between(
+                    data_x,
+                    data_e_lower,  # type: ignore
+                    data_e_upper,  # type: ignore
+                    color=plot_color,
+                    alpha=0.2,
+                )
 
             if metric_name in metrics_right:
                 axl.plot(
@@ -255,12 +268,14 @@ def plot_training_traces_by_c(
     figsize: tuple[float, float] = DEFAULT_FIGSIZE,
     coloring_rules: defaultdict[str, str | None] = defaultdict(lambda: None),
     styling_rules: defaultdict[str, str | None] = defaultdict(lambda: None),
+    use_tex: bool = False,
 ) -> Figure:
     ps_list = list(results.keys())
     metrics, c_values = __check_arguments(
         ps_list,
         metrics,
         ["ge_bar", "err_bar", "mseo", "aseo"],
+        use_tex,
     )
 
     fig, axl = plt.subplots(figsize=figsize)

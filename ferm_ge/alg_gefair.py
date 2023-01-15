@@ -57,7 +57,7 @@ class GEFairResult:
         return float(self.c_result.lambda_bar)
 
     @cached_property
-    def hypi_stat(self) -> dict[int, int]:
+    def thr_idx_stat(self) -> dict[int, int]:
         return {
             i: int(stat)
             for i, stat in enumerate(
@@ -70,7 +70,7 @@ class GEFairResult:
         }
 
     @property
-    def hypi_t(self) -> NDArray[np.intp] | None:
+    def thr_idx_t(self) -> NDArray[np.intp] | None:
         if self.c_result.hypi_t:
             return npct.as_array(
                 self.c_result.hypi_t,
@@ -127,6 +127,8 @@ class GEFairSolver:
         c: float,
         a: float,
     ) -> GEFairResult:
+        assert c != a, "c and a must be different"
+        assert nu > 0, "nu must be positive"
         result_struct_p = self.lib.solve_gefair(
             ctypes.c_size_t(len(thr_candidates)),
             (ctypes.c_double * len(thr_candidates))(*thr_candidates),
@@ -153,10 +155,23 @@ class GEFairSolver:
         gamma: float,
         c: float,
         a: float,
-    ) -> float:
+    ) -> tuple[float, int]:
         """
         Predicts approximated memory consumption in bytes during algorithm.
         """
+
+        assert c != a, "c and a must be different"
+        assert nu > 0, "nu must be positive"
+
+        ca: float = (c + a) / (c - a)
+        if alpha == 0:
+            I_up = np.log(ca)
+        elif alpha == 1:
+            I_up = ca * np.log(ca)
+        else:
+            I_up = (np.power(ca, alpha) - 1) / np.abs((alpha - 1) * alpha)
+        A_alpha = 1 + lambda_max * (gamma + I_up)
+        T = 4 * A_alpha * A_alpha * np.log(2) / (nu * nu)
 
         mem_consumption: float = 0.0
 
@@ -167,20 +182,10 @@ class GEFairSolver:
         mem_consumption += self.size_of_size_t * thr_granularity
 
         if self.flag_trace_hypi_t:
-            ca: float = (c + a) / (c - a)
-            if alpha == 0:
-                I_up = np.log(ca)
-            elif alpha == 1:
-                I_up = ca * np.log(ca)
-            else:
-                I_up = (np.power(ca, alpha) - 1) / np.abs((alpha - 1) * alpha)
-            A_alpha = 1 + lambda_max * (gamma + I_up)
-            T = 4 * A_alpha * A_alpha * np.log(2) / (nu * nu)
-
             # memory for hypi_t
             mem_consumption += self.size_of_size_t * T
 
-        return mem_consumption
+        return mem_consumption, T
 
     @staticmethod
     def compile_gefair(trace_hypi_t: bool = False) -> str:

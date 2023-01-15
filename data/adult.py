@@ -15,22 +15,22 @@ class Adult(Dataset):
     Kohavi, R. (1996).
     Scaling up the accuracy of Naive-Bayes classifiers: a decision-tree hybrid.
     In Proceedings of the 2nd International Conference on Knowledge Discovery
-    and Data mining, Portland, 1996 (pp. 202–207).
+    and Data mining, Portland, 1996 (pp. 202-207).
     """
 
     def __init__(self):
         self.X_train: NDArray[np.float_] | None = None
         self.y_train: NDArray[np.float_] | None = None
-        self.X_test: NDArray[np.float_] | None = None
-        self.y_test: NDArray[np.float_] | None = None
+        self.X_valid: NDArray[np.float_] | None = None
+        self.y_valid: NDArray[np.float_] | None = None
 
         self.group_1_name = "female"
         self.group_1_train_indices: NDArray[np.intp] | None = None
-        self.group_1_test_indices: NDArray[np.intp] | None = None
+        self.group_1_valid_indices: NDArray[np.intp] | None = None
 
         self.group_2_name = "male"
         self.group_2_train_indices: NDArray[np.intp] | None = None
-        self.group_2_test_indices: NDArray[np.intp] | None = None
+        self.group_2_valid_indices: NDArray[np.intp] | None = None
 
     @property
     def name(self) -> str:
@@ -60,17 +60,17 @@ class Adult(Dataset):
         y = adult["income"]
 
         X_train: pd.DataFrame
-        X_test: pd.DataFrame
+        X_valid: pd.DataFrame
         y_train: pd.Series
-        y_test: pd.Series
-        X_train, X_test, y_train, y_test = train_test_split(
+        y_valid: pd.Series
+        X_train, X_valid, y_train, y_valid = train_test_split(
             X, y, test_size=0.3, random_state=42
         )  # type: ignore
 
         X_train = X_train.reset_index(drop=True)
-        X_test = X_test.reset_index(drop=True)
+        X_valid = X_valid.reset_index(drop=True)
         y_train = y_train.reset_index(drop=True)
-        y_test = y_test.reset_index(drop=True)
+        y_valid = y_valid.reset_index(drop=True)
 
         self.group_1_train_indices = X_train.index[  # type: ignore
             X_train["gender"] == "Female"  # type: ignore
@@ -79,11 +79,11 @@ class Adult(Dataset):
             X_train["gender"] != "Female"  # type: ignore
         ].to_numpy()
 
-        self.group_1_test_indices = X_test.index[  # type: ignore
-            X_test["gender"] == "Female"  # type: ignore
+        self.group_1_valid_indices = X_valid.index[  # type: ignore
+            X_valid["gender"] == "Female"  # type: ignore
         ].to_numpy()
-        self.group_2_test_indices = X_test.index[  # type: ignore
-            X_test["gender"] != "Female"  # type: ignore
+        self.group_2_valid_indices = X_valid.index[  # type: ignore
+            X_valid["gender"] != "Female"  # type: ignore
         ].to_numpy()
 
         categorical_features = X.select_dtypes(
@@ -104,10 +104,10 @@ class Adult(Dataset):
         )
 
         self.X_train = preprocessor.fit_transform(X_train).A  # type: ignore
-        self.X_test = preprocessor.transform(X_test).A  # type: ignore
+        self.X_valid = preprocessor.transform(X_valid).A  # type: ignore
 
         self.y_train = y_train.to_numpy()  # type: ignore
-        self.y_test = y_test.to_numpy()  # type: ignore
+        self.y_valid = y_valid.to_numpy()  # type: ignore
 
     @property
     def train_data(self) -> tuple[NDArray[np.float_], NDArray[np.float_]]:
@@ -116,10 +116,10 @@ class Adult(Dataset):
         return self.X_train, self.y_train
 
     @property
-    def test_data(self) -> tuple[NDArray[np.float_], NDArray[np.float_]]:
-        assert self.X_test is not None, "X_test is not loaded"
-        assert self.y_test is not None, "y_test is not loaded"
-        return self.X_test, self.y_test
+    def valid_data(self) -> tuple[NDArray[np.float_], NDArray[np.float_]]:
+        assert self.X_valid is not None, "X_valid is not loaded"
+        assert self.y_valid is not None, "y_valid is not loaded"
+        return self.X_valid, self.y_valid
 
     @property
     def train_group_indices(self) -> dict[str, NDArray[np.intp]]:
@@ -135,14 +135,14 @@ class Adult(Dataset):
         }
 
     @property
-    def test_group_indices(self) -> dict[str, NDArray[np.intp]]:
+    def valid_group_indices(self) -> dict[str, NDArray[np.intp]]:
         assert (
-            self.group_1_test_indices is not None
-        ), "group_1_test_indices is not loaded"
+            self.group_1_valid_indices is not None
+        ), "group_1_valid_indices is not loaded"
         assert (
-            self.group_2_test_indices is not None
-        ), "group_2_test_indices is not loaded"
+            self.group_2_valid_indices is not None
+        ), "group_2_valid_indices is not loaded"
         return {
-            self.group_1_name: self.group_1_test_indices,
-            self.group_2_name: self.group_2_test_indices,
+            self.group_1_name: self.group_1_valid_indices,
+            self.group_2_name: self.group_2_valid_indices,
         }

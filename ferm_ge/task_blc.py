@@ -5,17 +5,17 @@ from sklearn.metrics import confusion_matrix
 
 
 class BinaryLogisticClassification:
-    def __init__(self):
-        self.classifier = LogisticRegression(max_iter=1000)
+    def __init__(self, max_iter: int = 1000):
+        self.classifier = LogisticRegression(max_iter=max_iter)
 
         self.train_proba: NDArray[np.float_] | None = None
         self.train_y: NDArray[np.float_] | None = None
 
-        self.test_proba: NDArray[np.float_] | None = None
-        self.test_y: NDArray[np.float_] | None = None
+        self.valid_proba: NDArray[np.float_] | None = None
+        self.valid_y: NDArray[np.float_] | None = None
 
         self.train_group_indices: dict[str, NDArray[np.intp]] | None = None
-        self.test_group_indices: dict[str, NDArray[np.intp]] | None = None
+        self.valid_group_indices: dict[str, NDArray[np.intp]] | None = None
 
     def train(self, X: NDArray[np.float_], y: NDArray[np.float_]):
         """
@@ -27,32 +27,32 @@ class BinaryLogisticClassification:
         self.train_proba = self.classifier.predict_proba(X)
         self.train_y = y
 
-    def test(self, X: NDArray[np.float_], y: NDArray[np.float_]):
+    def valid(self, X: NDArray[np.float_], y: NDArray[np.float_]):
         """
-        Test the model on the given data.
-        To get the predictions on the test data, use `predict_test()`.
+        Validate the model on the given data.
+        To get the predictions on the validation data, use `predict_valid()`.
         """
 
         assert self.classifier.coef_ is not None, "classifier is not fitted yet"
 
-        self.test_proba = self.classifier.predict_proba(X)
-        self.test_y = y
+        self.valid_proba = self.classifier.predict_proba(X)
+        self.valid_y = y
 
     def set_group(
         self,
         train_group_indices: dict[str, NDArray[np.intp]],
-        test_group_indices: dict[str, NDArray[np.intp]],
+        valid_group_indices: dict[str, NDArray[np.intp]],
     ):
         """
         Set the group names and indices.
         """
 
         assert (
-            train_group_indices.keys() == test_group_indices.keys()
-        ), "train and test groups are not the same"
+            train_group_indices.keys() == valid_group_indices.keys()
+        ), "train and valid groups are not the same"
 
         self.train_group_indices = train_group_indices
-        self.test_group_indices = test_group_indices
+        self.valid_group_indices = valid_group_indices
 
     @property
     def group_names(self) -> list[str]:
@@ -83,25 +83,25 @@ class BinaryLogisticClassification:
         y_hat = (self.train_proba[:, 1] >= threshold).astype(int)
         return y_hat, confusion_matrix(self.train_y, y_hat).ravel()
 
-    def predict_test(
+    def predict_valid(
         self,
         threshold: float = 0.5,
         group: str | None = None,
     ) -> tuple[np.ndarray, np.ndarray]:
         assert (
-            self.test_proba is not None and self.test_y is not None
-        ), "classifier is not tested yet"
+            self.valid_proba is not None and self.valid_y is not None
+        ), "classifier is not validated yet"
 
         if group is not None:
             assert (
-                self.test_group_indices is not None
-            ), "test groups are not set yet"
+                self.valid_group_indices is not None
+            ), "valid groups are not set yet"
             assert (
-                group in self.test_group_indices
-            ), f"test group {group} is not found"
-            indices = self.test_group_indices[group]
-            y_hat = (self.test_proba[indices, 1] >= threshold).astype(int)
-            return y_hat, confusion_matrix(self.test_y[indices], y_hat).ravel()
+                group in self.valid_group_indices
+            ), f"valid group {group} is not found"
+            indices = self.valid_group_indices[group]
+            y_hat = (self.valid_proba[indices, 1] >= threshold).astype(int)
+            return y_hat, confusion_matrix(self.valid_y[indices], y_hat).ravel()
 
-        y_hat = (self.test_proba[:, 1] >= threshold).astype(int)
-        return y_hat, confusion_matrix(self.test_y, y_hat).ravel()
+        y_hat = (self.valid_proba[:, 1] >= threshold).astype(int)
+        return y_hat, confusion_matrix(self.valid_y, y_hat).ravel()
