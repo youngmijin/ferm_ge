@@ -55,20 +55,31 @@ def get_time_averaged_trace(
 
 
 @njit
-def get_mean_std(
-    values: NDArray[np.float_], probs: NDArray[np.float_], times: int = 0
-) -> tuple[float, float]:
+def get_prob_choices(
+    probs: NDArray[np.float_], times: int
+) -> NDArray[np.intp] | None:
     if times <= 0:
+        return None
+    choices = np.zeros((times,), dtype=np.intp)
+    for i in range(times):
+        choices[i] = np.searchsorted(
+            np.cumsum(probs), np.random.random(), side="right"
+        )
+    return choices
+
+
+@njit
+def get_mean_std(
+    values: NDArray[np.float_],
+    probs: NDArray[np.float_],
+    choices: NDArray[np.intp] | None,
+) -> tuple[float, float]:
+    values = np.ascontiguousarray(values)
+    if choices is None:
         mean = np.dot(values, probs)
         std = np.sqrt(np.dot((values - mean) ** 2, probs))
     else:
-        choices = np.zeros((times,), dtype=np.float_)
-        for i in range(times):
-            choices[i] = values[
-                np.searchsorted(
-                    np.cumsum(probs), np.random.random(), side="right"
-                )
-            ]
-        mean = float(np.mean(choices))
-        std = float(np.std(choices))
+        chosen_values = values[choices]
+        mean = float(np.mean(chosen_values))
+        std = float(np.std(chosen_values))
     return mean, std

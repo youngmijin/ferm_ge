@@ -1,6 +1,7 @@
 import statistics
 import warnings
 from collections import defaultdict
+from itertools import product
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -13,32 +14,50 @@ DEFAULT_FIGSIZE = (3, 1.5)
 DEFAULT_LINECOLOR = "black"
 DEFAULT_LINESTYLE = "solid"
 
-LEGEND_STR_DICT = {
+PLOTABLE_METRICS = [
+    "ge",
+    "err",
+    "aseo",
+    "aseo_fp",
+    "aseo_fn",
+    "v",
+    "group_rfp",
+    "group_rfn",
+]
+
+METRIC2TEX_DICT = {
     "ge": "$I_\\alpha$",
-    "ge_bar": "$\\bar{I}_\\alpha$",
+    "ge_bar": "$\\bar{{I}}_\\alpha$",
     "err": "error",
-    "err_bar": "$\\bar{\\mathrm{error}}$",
-    "mseo": "MSEO",
+    "err_bar": "$\\bar{{\\mathrm{{error}}}}$",
     "aseo": "ASEO",
+    "aseo_fp": "FP",
+    "aseo_fn": "FN",
     "v": "$V$",
+    "group_rfp": "{group_name} $r^{{FP}}$",
+    "group_rfn": "{group_name} $r^{{FN}}$",
 }
+
+
+def __legend(m: str, d: dict[str, str] | None = None) -> str:
+    if d is None:
+        return METRIC2TEX_DICT[m]
+    return METRIC2TEX_DICT[m].format(**d)
 
 
 def __check_arguments(
     ps_list: list[ParamSet],
     metric_names: list[str],
-    valid_metric_names: list[str],
+    metric_names_mappings: dict[str, str],
     use_tex: bool,
 ) -> tuple[list[str], list[float]]:
     alpha_values = sorted(set([ps.alpha for ps in ps_list]))
     c_values = sorted(set([ps.c for ps in ps_list]))
     a_values = sorted(set([ps.a for ps in ps_list]))
 
-    if isinstance(metric_names, str):
-        metric_names = [metric_names]
     for metric_name in metric_names:
         assert (
-            metric_name in valid_metric_names
+            metric_name in PLOTABLE_METRICS
         ), f"unknown metric name: {metric_name}"
 
     if len(alpha_values) > 1:
@@ -48,6 +67,11 @@ def __check_arguments(
         )
     if len(a_values) > 1:
         warnings.warn(f"multiple values of a detected: {a_values}", UserWarning)
+
+    metric_names = [
+        (metric_names_mappings[mn] if mn in metric_names_mappings else mn)
+        for mn in metric_names
+    ]
 
     if use_tex:
         plt.rcParams["ps.useafm"] = True
@@ -85,6 +109,7 @@ def plot_valid_results_by_gamma_c(
     results: dict[ParamSet, ExpValidResult],
     metrics: list[str],
     metrics_right: list[str] = [],
+    group_names: list[str] = ["unknown"],
     baselines: dict[ParamSet, dict[str, float]] | None = None,
     confidence_band: float = 0.0,
     figsize: tuple[float, float] = DEFAULT_FIGSIZE,
@@ -93,13 +118,11 @@ def plot_valid_results_by_gamma_c(
     use_tex: bool = False,
 ) -> Figure:
     ps_list = list(results.keys())
-    metrics, c_values = __check_arguments(
-        ps_list,
-        metrics,
-        ["ge", "err", "mseo", "aseo", "v"],
-        use_tex,
-    )
+    metrics, c_values = __check_arguments(ps_list, metrics, {}, use_tex)
 
+    assert (
+        len(metrics) > 0 and len(group_names) > 0
+    ), "metrics and group_names must not be empty"
     assert (
         confidence_band >= 0 and confidence_band < 1
     ), "confidence_band must be in [0, 1)"
@@ -117,7 +140,7 @@ def plot_valid_results_by_gamma_c(
         ci: [] for ci in range(len(c_values))
     }
     for ci, c in enumerate(c_values):
-        for metric_name in metrics:
+        for metric_name, group_name in product(metrics, group_names):
             data_x: list[float] = []
             data_y: list[float] = []
             data_e: list[float] = []
@@ -125,32 +148,34 @@ def plot_valid_results_by_gamma_c(
                 if ps.c != c:
                     continue
                 if metric_name == "ge":
-                    data_y.append(result.ge)
-                    data_e.append(result.ge_std)
+                    mean, std = result.ge
                 elif metric_name == "err":
-                    data_y.append(result.err)
-                    data_e.append(result.err_std)
-                elif metric_name == "mseo":
-                    assert (
-                        result.mseo is not None and result.mseo_std is not None
-                    ), f"mseo is not available for {ps}"
-                    data_y.append(result.mseo)
-                    data_e.append(result.mseo_std)
+                    mean, std = result.err
                 elif metric_name == "aseo":
-                    assert (
-                        result.aseo is not None and result.aseo_std is not None
-                    ), f"aseo is not available for {ps}"
-                    data_y.append(result.aseo)
-                    data_e.append(result.aseo_std)
+                    assert result.aseo is not None
+                    mean, std = result.aseo
+                elif metric_name == "aseo_fp":
+                    assert result.aseo_fp is not None
+                    mean, std = result.aseo_fp
+                elif metric_name == "aseo_fn":
+                    assert result.aseo_fn is not None
+                    mean, std = result.aseo_fn
                 elif metric_name == "v":
-                    assert (
-                        result.v is not None and result.v_std is not None
-                    ), f"v is not available for {ps}"
-                    data_y.append(result.v)
-                    data_e.append(0)
+                    assert result.v is not None
+                    mean, std = result.v
+                elif metric_name == "group_rfp":
+                    assert result.group_rfp is not None
+                    assert group_name in result.group_rfp
+                    mean, std = result.group_rfp[group_name]
+                elif metric_name == "group_rfn":
+                    assert result.group_rfn is not None
+                    assert group_name in result.group_rfn
+                    mean, std = result.group_rfn[group_name]
                 else:
-                    continue
+                    raise ValueError(f"unknown metric: {metric_name}")
                 data_x.append(ps.gamma)
+                data_y.append(mean)
+                data_e.append(std)
 
                 if (
                     (baselines is not None)
@@ -179,22 +204,25 @@ def plot_valid_results_by_gamma_c(
                 lymin = min(lymin, min(data_e_lower))
                 lymax = max(lymax, max(data_e_upper))
 
+            metric_legend = __legend(metric_name, {"group_name": group_name})
             if len(metrics) > 1:
                 if len(c_values) == 1:
-                    plot_label = f"{LEGEND_STR_DICT[metric_name]}"
+                    plot_label = metric_legend
                 else:
-                    plot_label = f"{LEGEND_STR_DICT[metric_name]} $c={c}$"
+                    plot_label = f"{metric_legend} $c={c}$"
             else:
                 plot_label = f"$c={c}$"
 
             plot_color = (
                 coloring_rules[f"c={c}"]
                 or coloring_rules[f"m={metric_name}"]
+                or coloring_rules[f"g={group_name}"]
                 or DEFAULT_LINECOLOR
             )
             plot_linestyle = (
                 styling_rules[f"c={c}"]
                 or styling_rules[f"m={metric_name}"]
+                or coloring_rules[f"g={group_name}"]
                 or DEFAULT_LINESTYLE
             )
 
@@ -274,7 +302,7 @@ def plot_training_traces_by_c(
     metrics, c_values = __check_arguments(
         ps_list,
         metrics,
-        ["ge_bar", "err_bar", "mseo", "aseo"],
+        {"ge": "ge_bar", "err": "err_bar"},
         use_tex,
     )
 
@@ -296,26 +324,16 @@ def plot_training_traces_by_c(
                         result.err_bar_trace is not None
                     ), f"err_bar_trace is not available for {ps}"
                     data = result.err_bar_trace
-                elif metric_name == "mseo":
-                    assert (
-                        result.mseo_trace is not None
-                    ), f"mseo_trace is not available for {ps}"
-                    data = result.mseo_trace
-                elif metric_name == "aseo":
-                    assert (
-                        result.aseo_trace is not None
-                    ), f"aseo_trace is not available for {ps}"
-                    data = result.aseo_trace
-                if data is None:
-                    continue
+                else:
+                    raise ValueError(f"unexpected metric {metric_name}")
 
                 xs, ys = __resample(data)
 
                 if len(metrics) > 1:
                     if len(c_values) == 1:
-                        plot_label = f"{LEGEND_STR_DICT[metric_name]}"
+                        plot_label = f"{__legend(metric_name)}"
                     else:
-                        plot_label = f"{LEGEND_STR_DICT[metric_name]} $c={c}$"
+                        plot_label = f"{__legend(metric_name)} $c={c}$"
                 else:
                     plot_label = f"$c={c}$"
 

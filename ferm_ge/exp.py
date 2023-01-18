@@ -7,26 +7,30 @@ import psutil
 from numpy.typing import NDArray
 
 from .alg_ge import calc_ge_confmat, calc_ge_v
-from .alg_gefair import GEFairResult, GEFairSolver
-from .alg_seo import calc_seo
+from .alg_gefair import GEFairSolver
+from .alg_seo import calc_aseo
 from .exp_param import ParamSet, get_param_sets
-from .exp_utils import Cache, FakePool, get_mean_std, get_time_averaged_trace
+from .exp_utils import (
+    Cache,
+    FakePool,
+    get_mean_std,
+    get_prob_choices,
+    get_time_averaged_trace,
+)
 from .task_blc import BinaryLogisticClassification
 
 
 @dataclass
 class ExpValidResult:
-    ge: float
-    ge_std: float
-    err: float
-    err_std: float
+    ge: tuple[float, float]
+    err: tuple[float, float]
 
-    v: float | None
-    v_std: float | None
-    mseo: float | None
-    mseo_std: float | None
-    aseo: float | None
-    aseo_std: float | None
+    v: tuple[float, float] | None
+    aseo: tuple[float, float] | None
+    aseo_fp: tuple[float, float] | None
+    aseo_fn: tuple[float, float] | None
+    group_rfp: dict[str, tuple[float, float]] | None
+    group_rfn: dict[str, tuple[float, float]] | None
 
 
 @dataclass
@@ -37,18 +41,13 @@ class ExpTrainResult:
     ge_bar_trace: NDArray[np.float_] | None
     err_bar_trace: NDArray[np.float_] | None
 
-    mseo_trace: NDArray[np.float_] | None
-    aseo_trace: NDArray[np.float_] | None
-
 
 def run_exp(
     classifier: BinaryLogisticClassification,
     param_dict: dict[str, list[float]],
     keep_trace: bool = True,
-    calc_train_seo: bool = False,
-    calc_valid_seo: bool = False,
-    seo_components: list[str] = ["fp", "fn"],
     include_valid: bool = True,
+    include_group_metrics: bool = False,
     valid_times: int = 0,
     thr_granularity: int = 200,
     no_threading: bool = False,
@@ -69,28 +68,6 @@ def run_exp(
 
     # pre-calculate baseline index for error and ge
     metric_baseline_idx = np.argmin(t_err_by_thr_idx)
-
-    # pre-calculate seo by threshold if needed
-    t_mseo_by_thr_idx: NDArray[np.float_] | None = None
-    t_aseo_by_thr_idx: NDArray[np.float_] | None = None
-
-    group_cnt = len(classifier.group_names)
-    if calc_train_seo:
-        t_mseo_by_thr_idx = np.zeros(thr_granularity, dtype=np.float_)
-        t_aseo_by_thr_idx = np.zeros(thr_granularity, dtype=np.float_)
-        for thr_idx, thr in enumerate(thr_candidates):
-            group_confmat = np.zeros((4, group_cnt), dtype=np.float_)
-            for group_idx, group_name in enumerate(classifier.group_names):
-                _, confmat = classifier.predict_train(thr, group=group_name)
-                group_confmat[:, group_idx] = confmat.astype(float)
-            mseo, aseo = calc_seo(  # type: ignore
-                *t_confmat_by_thr_idx[thr_idx],
-                *group_confmat,
-                exclude_rfp=(not "fp" in seo_components),
-                exclude_rfn=(not "fn" in seo_components),
-            )
-            t_mseo_by_thr_idx[thr_idx] = mseo
-            t_aseo_by_thr_idx[thr_idx] = aseo
 
     # pre-calculate generalized entropy by alpha/c/a
     t_ge_by_alpaca = Cache[float, list[float]]()
@@ -128,8 +105,6 @@ def run_exp(
         mem_expresult = 0
         if keep_trace:
             mem_expresult += T * 8 * 2
-            if calc_train_seo:
-                mem_expresult += T * 8 * 2
 
         threading_mem_usage.append(mem_gefair + mem_expresult)
         threading_args.append((param_set,))
@@ -152,7 +127,7 @@ def run_exp(
             a=ps.a,
         )
 
-        # collect training results - 1 (generalized entropy & error trace)
+        # collect training results - (generalized entropy & error trace)
         ge_bar_trace: NDArray[np.float_] | None = None
         err_bar_trace: NDArray[np.float_] | None = None
         if gefair_result.thr_idx_t is not None:
@@ -164,15 +139,6 @@ def run_exp(
                 gefair_result.thr_idx_t, np.array(t_err_by_thr_idx)
             )
 
-        # collect training results - 2 (mseo & aseo trace)
-        mseo_trace: NDArray[np.float_] | None = None
-        aseo_trace: NDArray[np.float_] | None = None
-        if calc_train_seo and gefair_result.thr_idx_t is not None:
-            assert t_mseo_by_thr_idx is not None
-            assert t_aseo_by_thr_idx is not None
-            mseo_trace = t_mseo_by_thr_idx[gefair_result.thr_idx_t]
-            aseo_trace = t_aseo_by_thr_idx[gefair_result.thr_idx_t]
-
         train_result = ExpTrainResult(
             ge_baseline=t_ge_by_alpaca.get(alpha=ps.alpha, c=ps.c, a=ps.a)[
                 metric_baseline_idx
@@ -180,26 +146,26 @@ def run_exp(
             err_baseline=t_err_by_thr_idx[metric_baseline_idx],
             ge_bar_trace=ge_bar_trace,
             err_bar_trace=err_bar_trace,
-            mseo_trace=mseo_trace,
-            aseo_trace=aseo_trace,
         )
 
         # collect validation results if needed
         valid_result: ExpValidResult | None = None
         if include_valid:
             # collect validation results - 1 (generalized entropy & error)
-            result_thr_idxs = gefair_result.thr_idx_stat.keys()
-            result_thr_probs = (
+            v_thr_idxs = gefair_result.thr_idx_stat.keys()
+            v_thr_probs = (
                 np.array(
                     list(gefair_result.thr_idx_stat.values()),
                     dtype=np.float_,
                 )
                 / gefair_result.T
             )
+            v_thr_cnt = len(v_thr_idxs)
+            v_thr_choices = get_prob_choices(v_thr_probs, valid_times)
 
             v_confmat_by_thr_idx = [
                 classifier.predict_valid(thr_candidates[thr_idx])[1]
-                for thr_idx in result_thr_idxs
+                for thr_idx in v_thr_idxs
             ]
             v_ge_by_thr_idx = np.array(
                 [
@@ -214,30 +180,28 @@ def run_exp(
                 ]
             )
 
-            v_ge_mean, v_ge_std = get_mean_std(
-                v_ge_by_thr_idx, result_thr_probs, times=valid_times
-            )
-            v_err_mean, v_err_std = get_mean_std(
-                v_err_by_thr_idx, result_thr_probs, times=valid_times
-            )
+            v_ge = get_mean_std(v_ge_by_thr_idx, v_thr_probs, v_thr_choices)
+            v_err = get_mean_std(v_err_by_thr_idx, v_thr_probs, v_thr_choices)
 
-            # collect testing results - 3 (v & mseo & aseo)
-            v_v_mean: float | None = None
-            v_v_std: float | None = None
-            v_mseo_mean: float | None = None
-            v_mseo_std: float | None = None
-            v_aseo_mean: float | None = None
-            v_aseo_std: float | None = None
+            # collect testing results - 3 (v & aseo & rfp & rfn)
+            v_v: tuple[float, float] | None = None
+            v_aseo: tuple[float, float] | None = None
+            v_aseo_fp: tuple[float, float] | None = None
+            v_aseo_fn: tuple[float, float] | None = None
+            v_group_rfn: dict[str, tuple[float, float]] | None = None
+            v_group_rfp: dict[str, tuple[float, float]] | None = None
 
-            if calc_valid_seo:
-                v_v_by_thr_idx = np.zeros(len(result_thr_idxs), dtype=np.float_)
-                v_mseo_by_thr_idx = np.zeros(
-                    len(result_thr_idxs), dtype=np.float_
+            if include_group_metrics:
+                group_cnt = len(classifier.group_names)
+                v_v_by_thr_idx = np.zeros(v_thr_cnt, dtype=np.float_)
+                v_aseo_by_thr_idx = np.zeros((v_thr_cnt, 3), dtype=np.float_)
+                v_group_rfp_by_thr_idx = np.zeros(
+                    (v_thr_cnt, group_cnt), dtype=np.float_
                 )
-                v_aseo_by_thr_idx = np.zeros(
-                    len(result_thr_idxs), dtype=np.float_
+                v_group_rfn_by_thr_idx = np.zeros(
+                    (v_thr_cnt, group_cnt), dtype=np.float_
                 )
-                for i, thr_idx in enumerate(result_thr_idxs):
+                for i, thr_idx in enumerate(v_thr_idxs):
                     total_confmat = classifier.predict_valid(
                         thr_candidates[thr_idx]
                     )[1].astype(float)
@@ -252,35 +216,47 @@ def run_exp(
                     v_v_by_thr_idx[i] = calc_ge_v(
                         ps.alpha, ps.c, ps.a, *group_confmat
                     )
-                    mseo, aseo = calc_seo(  # type: ignore
+                    aseo, aseo_fp, aseo_fn, group_rfp, group_rfn = calc_aseo(
                         *total_confmat,
                         *group_confmat,
-                        exclude_rfp=(not "fp" in seo_components),
-                        exclude_rfn=(not "fn" in seo_components),
                     )
-                    v_mseo_by_thr_idx[i] = mseo
-                    v_aseo_by_thr_idx[i] = aseo
-                v_v_mean, v_v_std = get_mean_std(
-                    v_v_by_thr_idx, result_thr_probs, times=valid_times
+                    v_aseo_by_thr_idx[i, :] = [aseo, aseo_fp, aseo_fn]
+                    v_group_rfp_by_thr_idx[i] = group_rfp
+                    v_group_rfn_by_thr_idx[i] = group_rfn
+                v_v = get_mean_std(v_v_by_thr_idx, v_thr_probs, v_thr_choices)
+                v_aseo = get_mean_std(
+                    v_aseo_by_thr_idx[:, 0], v_thr_probs, v_thr_choices
                 )
-                v_mseo_mean, v_mseo_std = get_mean_std(
-                    v_mseo_by_thr_idx, result_thr_probs, times=valid_times
+                v_aseo_fp = get_mean_std(
+                    v_aseo_by_thr_idx[:, 1], v_thr_probs, v_thr_choices
                 )
-                v_aseo_mean, v_aseo_std = get_mean_std(
-                    v_aseo_by_thr_idx, result_thr_probs, times=valid_times
+                v_aseo_fn = get_mean_std(
+                    v_aseo_by_thr_idx[:, 2], v_thr_probs, v_thr_choices
                 )
 
+                v_group_rfp = {}
+                v_group_rfn = {}
+                for group_idx, group_name in enumerate(classifier.group_names):
+                    v_group_rfp[group_name] = get_mean_std(
+                        v_group_rfp_by_thr_idx[:, group_idx],
+                        v_thr_probs,
+                        v_thr_choices,
+                    )
+                    v_group_rfn[group_name] = get_mean_std(
+                        v_group_rfn_by_thr_idx[:, group_idx],
+                        v_thr_probs,
+                        v_thr_choices,
+                    )
+
             valid_result = ExpValidResult(
-                ge=v_ge_mean,
-                ge_std=v_ge_std,
-                err=v_err_mean,
-                err_std=v_err_std,
-                v=v_v_mean,
-                v_std=v_v_std,
-                mseo=v_mseo_mean,
-                mseo_std=v_mseo_std,
-                aseo=v_aseo_mean,
-                aseo_std=v_aseo_std,
+                ge=v_ge,
+                err=v_err,
+                v=v_v,
+                aseo=v_aseo,
+                aseo_fp=v_aseo_fp,
+                aseo_fn=v_aseo_fn,
+                group_rfp=v_group_rfp,
+                group_rfn=v_group_rfn,
             )
 
         del gefair_result

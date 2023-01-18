@@ -19,6 +19,7 @@ from data import Dataset
 from ferm_ge import BinaryLogisticClassification, get_param_sets, run_exp
 from plotting import (
     DEFAULT_FIGSIZE,
+    PLOTABLE_METRICS,
     plot_training_traces_by_c,
     plot_valid_results_by_gamma_c,
     save_fig,
@@ -73,21 +74,21 @@ def main(
     dataset: str,
     dataset_url: str | None,
     blc_max_iter: int,
-    calc_seo: bool,
-    seo_components: list[str],
+    group_metrics: bool,
     thr_granularity: int,
     valid_times: int,
     no_threading: bool,
     # plotting options
     metrics: list[list[str]],
     metrics_right: list[str],
+    apart_groups: bool,
     figsize: tuple[float, float],
     xlim: tuple[float, float] | None,
     ylim: tuple[float, float] | None,
     coloring_rules: defaultdict[str, str | None],
     styling_rules: defaultdict[str, str | None],
     confidence_band: float,
-    no_baseline: bool,
+    add_baseline: bool,
     use_tex: bool,
     # output options
     output_dir: str,
@@ -156,24 +157,18 @@ def main(
 
     # set up unit configs
     UNIT_TRAIN_LOG_TRACE: bool
-    UNIT_TRAIN_CALC_SEO: bool
     UNIT_VALID_DO: bool
-    UNIT_VALID_CALC_SEO: bool
     UNIT_METRICS_TRACE: list[list[str]]
     UNIT_METRICS_BY_GAMMA: list[list[str]]
 
     if study_type == "convergence":
         UNIT_TRAIN_LOG_TRACE = True
-        UNIT_TRAIN_CALC_SEO = calc_seo
         UNIT_VALID_DO = False
-        UNIT_VALID_CALC_SEO = False
         UNIT_METRICS_TRACE = metrics
         UNIT_METRICS_BY_GAMMA = []
     elif study_type == "varying_gamma":
         UNIT_TRAIN_LOG_TRACE = False
-        UNIT_TRAIN_CALC_SEO = False
         UNIT_VALID_DO = True
-        UNIT_VALID_CALC_SEO = calc_seo
         UNIT_METRICS_TRACE = []
         UNIT_METRICS_BY_GAMMA = metrics
     else:
@@ -210,10 +205,8 @@ def main(
             classifier,
             unit_param_dict,
             keep_trace=UNIT_TRAIN_LOG_TRACE,
-            calc_train_seo=UNIT_TRAIN_CALC_SEO,
-            calc_valid_seo=UNIT_VALID_CALC_SEO,
-            seo_components=seo_components,
             include_valid=UNIT_VALID_DO,
+            include_group_metrics=group_metrics,
             valid_times=valid_times,
             thr_granularity=thr_granularity,
             no_threading=no_threading,
@@ -261,20 +254,37 @@ def main(
             fig.clear()
             plt.close(fig)
 
+        mg_pair_by_gamma: list[tuple[list[str], list[str] | None]] = []
         for m in UNIT_METRICS_BY_GAMMA:
+            use_group = False
+            for mi in m:
+                if mi.startswith("group_"):
+                    use_group = True
+                    break
+            if use_group:
+                if apart_groups:
+                    for group_name in classifier.group_names:
+                        mg_pair_by_gamma.append((m, [group_name]))
+                else:
+                    mg_pair_by_gamma.append((m, classifier.group_names))
+            else:
+                mg_pair_by_gamma.append((m, None))
+
+        for m, group_names in mg_pair_by_gamma:
             fig = plot_valid_results_by_gamma_c(
                 valid_results,  # type: ignore
                 metrics=m,
+                group_names=group_names or ["unknown"],
                 baselines=(
-                    None
-                    if no_baseline
-                    else {
+                    {
                         ps: {
                             "ge": result.ge_baseline,
                             "err": result.err_baseline,
                         }
                         for ps, result in train_results.items()
                     }
+                    if add_baseline
+                    else None
                 ),
                 metrics_right=metrics_right,
                 figsize=figsize,
@@ -283,10 +293,20 @@ def main(
                 confidence_band=confidence_band,
                 use_tex=use_tex,
             )
-            m_by_gamma_pdf_path = os.path.join(
-                output_dir,
-                f"{fname_prefix}_{'-'.join(m)}_by_gamma.pdf",
-            )
+            if group_names is None:
+                m_by_gamma_pdf_path = os.path.join(
+                    output_dir,
+                    f"{fname_prefix}_{'-'.join(m)}_by_gamma.pdf",
+                )
+            else:
+                m_by_gamma_pdf_path = os.path.join(
+                    output_dir,
+                    "{}_{}_by_gamma_{}.pdf".format(
+                        fname_prefix,
+                        "-".join(m),
+                        "-".join(group_names),
+                    ),
+                )
             save_fig(fig, m_by_gamma_pdf_path)
             fig.clear()
             plt.close(fig)
@@ -402,16 +422,9 @@ if __name__ == "__main__":
         help="maximum number of iterations for binary logistic classifier",
     )
     expopt.add_argument(
-        "--calc_seo",
+        "--group_metrics",
         action="store_true",
-        help="calculate SEO and V values if set",
-    )
-    expopt.add_argument(
-        "--seo_components",
-        type=str,
-        default="fp+fn",
-        choices=["fp+fn", "fp", "fn"],
-        help="SEO components to calculate",
+        help="compute metrics between groups if set",
     )
     expopt.add_argument(
         "--thr_granularity",
@@ -435,16 +448,21 @@ if __name__ == "__main__":
         type=str,
         nargs="*",
         required=True,
-        choices=["ge_bar", "ge", "err_bar", "err", "mseo", "aseo", "v"],
+        choices=PLOTABLE_METRICS,
         help="metrics to plot",
     )
     plotopt.add_argument(
         "--metrics_right",
         type=str,
         nargs="*",
-        choices=["ge_bar", "ge", "err_bar", "err", "mseo", "aseo", "v"],
+        choices=PLOTABLE_METRICS,
         default=[],
         help="metrics to plot on the right y-axis (applied for all plots)",
+    )
+    plotopt.add_argument(
+        "--apart_groups",
+        action="store_true",
+        help="plot metrics for each group separately if set",
     )
     plotopt.add_argument(
         "--figsize",
@@ -476,7 +494,7 @@ if __name__ == "__main__":
         nargs="+",
         default=None,
         metavar="RULE",
-        help="line colors, by algorithm options and metrics (e.g. c=0.9:red)",
+        help="line colors, by params, metrics, and groups (e.g. c=0.9:red)",
     )
     plotopt.add_argument(
         "--styling_rules",
@@ -484,7 +502,7 @@ if __name__ == "__main__":
         nargs="+",
         default=None,
         metavar="RULE",
-        help="line styles, by algorithm options and metrics (e.g. m=err:solid)",
+        help="line styles, by params, metrics, and groups (e.g. m=err:solid)",
     )
     plotopt.add_argument(
         "--confidence_band",
@@ -494,9 +512,9 @@ if __name__ == "__main__":
         help="confidence (P%%) band; only applied for 'varying_gamma' studies",
     )
     plotopt.add_argument(
-        "--no_baseline",
+        "--add_baseline",
         action="store_true",
-        help="remove dashed baseline; only applied for 'varying_gamma' studies",
+        help="add dashed baseline; only applied for 'varying_gamma' studies",
     )
     plotopt.add_argument(
         "--use_tex",
@@ -520,8 +538,6 @@ if __name__ == "__main__":
     args.alpha = [[f for s in l for f in s] for l in args.alpha]
     args.c = [[f for s in l for f in s] for l in args.c]
     args.a = [[f for s in l for f in s] for l in args.a]
-
-    args.seo_components = args.seo_components.split("+")
 
     args.figsize = tuple(args.figsize)
     args.xlim = tuple(args.xlim) if args.xlim is not None else None
