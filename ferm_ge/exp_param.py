@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from itertools import product
 
+__all__ = ["ParamSet", "get_param_sets"]
+
 
 @dataclass(frozen=True)
 class ParamSet:

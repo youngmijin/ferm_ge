@@ -9,6 +9,8 @@ import numpy as np
 import numpy.ctypeslib as npct
 from numpy.typing import NDArray
 
+__all__ = ["GEFairSolver", "GEFairResult"]
+
 
 class C_GEFAIR_RESULT(ctypes.Structure):
     pass

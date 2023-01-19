@@ -1,4 +1,5 @@
 import gc
+import warnings
 from dataclasses import dataclass
 from multiprocessing.pool import ThreadPool
 
@@ -19,11 +20,15 @@ from .exp_utils import (
 )
 from .task_blc import BinaryLogisticClassification
 
+__all__ = ["ExpValidResult", "ExpTrainResult", "run_exp"]
+
 
 @dataclass
 class ExpValidResult:
     ge: tuple[float, float]
+    ge_baseline: float
     err: tuple[float, float]
+    err_baseline: float
 
     v: tuple[float, float] | None
     aseo: tuple[float, float] | None
@@ -35,9 +40,6 @@ class ExpValidResult:
 
 @dataclass
 class ExpTrainResult:
-    ge_baseline: float
-    err_baseline: float
-
     ge_bar_trace: NDArray[np.float_] | None
     err_bar_trace: NDArray[np.float_] | None
 
@@ -52,6 +54,13 @@ def run_exp(
     thr_granularity: int = 200,
     no_threading: bool = False,
 ) -> dict[ParamSet, tuple[ExpTrainResult, ExpValidResult | None]]:
+    if not (include_valid or keep_trace):
+        warnings.warn(
+            "Both include_valid and keep_trace are False. "
+            "This will result in no results being returned.",
+            UserWarning,
+        )
+
     thr_candidates: list[float] = np.linspace(0, 1, thr_granularity).tolist()
 
     # pre-calculate error and confmat by threshold
@@ -140,10 +149,6 @@ def run_exp(
             )
 
         train_result = ExpTrainResult(
-            ge_baseline=t_ge_by_alpaca.get(alpha=ps.alpha, c=ps.c, a=ps.a)[
-                metric_baseline_idx
-            ],
-            err_baseline=t_err_by_thr_idx[metric_baseline_idx],
             ge_bar_trace=ge_bar_trace,
             err_bar_trace=err_bar_trace,
         )
@@ -250,7 +255,11 @@ def run_exp(
 
             valid_result = ExpValidResult(
                 ge=v_ge,
+                ge_baseline=t_ge_by_alpaca.get(alpha=ps.alpha, c=ps.c, a=ps.a)[
+                    metric_baseline_idx
+                ],
                 err=v_err,
+                err_baseline=t_err_by_thr_idx[metric_baseline_idx],
                 v=v_v,
                 aseo=v_aseo,
                 aseo_fp=v_aseo_fp,

@@ -2,6 +2,8 @@ import numpy as np
 from numba import njit
 from numpy.typing import NDArray
 
+__all__ = ["calc_aseo"]
+
 
 @njit
 def calc_aseo(
@@ -24,17 +26,13 @@ def calc_aseo(
     assert 0 not in group_size
 
     total_rfp: NDArray[np.float_] = np.repeat(
-        total_fp / (total_fp + total_tn + total_fn + total_tp), group_cnt
+        total_fp / (total_fp + total_tn), group_cnt
     )
     total_rfn: NDArray[np.float_] = np.repeat(
-        total_fn / (total_fp + total_tn + total_fn + total_tp), group_cnt
+        total_fn / (total_fn + total_tp), group_cnt
     )
-    group_rfp: NDArray[np.float_] = group_fp / (
-        group_fp + group_tn + group_fn + group_tp
-    )
-    group_rfn: NDArray[np.float_] = group_fn / (
-        group_fp + group_tn + group_fn + group_tp
-    )
+    group_rfp: NDArray[np.float_] = group_fp / (group_fp + group_tn)
+    group_rfn: NDArray[np.float_] = group_fn / (group_fn + group_tp)
 
     assert (
         total_rfp.shape

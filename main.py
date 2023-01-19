@@ -6,7 +6,7 @@ import os
 import pickle
 import time
 import types
-from collections import defaultdict
+from typing import Any
 
 import matplotlib.pyplot as plt
 import numba
@@ -19,9 +19,9 @@ from data import Dataset
 from ferm_ge import BinaryLogisticClassification, get_param_sets, run_exp
 from plotting import (
     DEFAULT_FIGSIZE,
-    PLOTABLE_METRICS,
-    plot_training_traces_by_c,
-    plot_valid_results_by_gamma_c,
+    make_plottingdata,
+    parse_metric,
+    plot_results,
     save_fig,
 )
 
@@ -39,26 +39,23 @@ def make_param_readable(param: list[float]) -> str | float:
         return f"{min(param)} to {max(param)} (total {len(param)} steps)"
 
 
+def make_metric_readble(metric: str) -> dict[str, str]:
+    tgt, exp_val, _, _, axis, color, style, label, _ = parse_metric(metric)
+    return {
+        "value": f"{exp_val} from {tgt}",
+        "axis": axis,
+        "color": color,
+        "style": style,
+        "label": label or "(no label for legend)",
+    }
+
+
 def versatile_float(s: str) -> list[float]:
     if s.startswith("np."):
         return [float(i) for i in np.ndarray.tolist(eval(s).astype(float))]
     if s.startswith("range("):
         return [float(i) for i in eval(s)]
     return [float(s)]
-
-
-def parse_plotting_rules(
-    strs: list[str], default: str | None = None
-) -> defaultdict[str, str | None]:
-    optdict = defaultdict[str, str | None](lambda: default)
-    for s in strs:
-        assert ":" in s, "plotting parameter must be in the form of 'key:value'"
-        key, value = s.split(":")
-        assert (
-            "=" in key
-        ), "plotting parameter must be in the form of 'key=value:value'"
-        optdict[key] = value
-    return optdict
 
 
 def main(
@@ -74,21 +71,16 @@ def main(
     dataset: str,
     dataset_url: str | None,
     blc_max_iter: int,
-    group_metrics: bool,
+    calc_between_groups: bool,
     thr_granularity: int,
     valid_times: int,
     no_threading: bool,
     # plotting options
     metrics: list[list[str]],
-    metrics_right: list[str],
-    apart_groups: bool,
     figsize: tuple[float, float],
     xlim: tuple[float, float] | None,
     ylim: tuple[float, float] | None,
-    coloring_rules: defaultdict[str, str | None],
-    styling_rules: defaultdict[str, str | None],
     confidence_band: float,
-    add_baseline: bool,
     use_tex: bool,
     # output options
     output_dir: str,
@@ -158,19 +150,22 @@ def main(
     # set up unit configs
     UNIT_TRAIN_LOG_TRACE: bool
     UNIT_VALID_DO: bool
-    UNIT_METRICS_TRACE: list[list[str]]
-    UNIT_METRICS_BY_GAMMA: list[list[str]]
+    UNIT_PLOT_X_AXIS: str | None
+    UNIT_PLOT_XPAD: float | None
+    UNIT_PLOT_YPAD: float | None
 
     if study_type == "convergence":
         UNIT_TRAIN_LOG_TRACE = True
         UNIT_VALID_DO = False
-        UNIT_METRICS_TRACE = metrics
-        UNIT_METRICS_BY_GAMMA = []
+        UNIT_PLOT_X_AXIS = None
+        UNIT_PLOT_XPAD = None
+        UNIT_PLOT_YPAD = None
     elif study_type == "varying_gamma":
         UNIT_TRAIN_LOG_TRACE = False
         UNIT_VALID_DO = True
-        UNIT_METRICS_TRACE = []
-        UNIT_METRICS_BY_GAMMA = metrics
+        UNIT_PLOT_X_AXIS = "p:gamma"
+        UNIT_PLOT_XPAD = 0.0
+        UNIT_PLOT_YPAD = 0.15
     else:
         raise ValueError(f"invalid study_type: {study_type}")
 
@@ -182,19 +177,38 @@ def main(
         fname_prefix = f"{run_name}_{data.name}_{unit_idx}"
 
         # save parameter dictionary
-        unit_param_dict_readable: dict[str, str | float] = {}
+        unit_param_dict_readable: dict[str, Any] = {}
         unit_param_dict_readable["dataset"] = data.name
         unit_param_dict_readable["thr_granularity"] = thr_granularity
-        if len(metrics_right) > 0:
-            all_metrics = [m for ms in metrics for m in ms]
-            unit_param_dict_readable["plot_left_y_axis"] = ", ".join(
-                [m for m in all_metrics if m not in metrics_right]
+        unit_param_dict_readable["valid_times"] = valid_times
+        unit_param_dict_readable["study_type"] = study_type
+        unit_param_dict_readable["blc_max_iter"] = blc_max_iter
+
+        unit_param_dict_readable_plotting: dict[str, Any] = {}
+        if study_type == "convergence":
+            unit_param_dict_readable_plotting["x_axis"] = "iteration"
+        elif study_type == "varying_gamma":
+            unit_param_dict_readable_plotting["x_axis"] = "gamma"
+        unit_param_dict_readable_plotting["figsize"] = str(figsize)
+        unit_param_dict_readable_plotting["confidence_band"] = confidence_band
+        unit_param_dict_readable_plotting["use_tex"] = use_tex
+        unit_param_dict_readable_plotting["figures"] = []
+        for metric_list in metrics:
+            unit_param_dict_readable_plotting_figures = []
+            for metric in metric_list:
+                unit_param_dict_readable_plotting_figures.append(
+                    make_metric_readble(metric)
+                )
+            unit_param_dict_readable_plotting["figures"].append(
+                unit_param_dict_readable_plotting_figures
             )
-            unit_param_dict_readable["plot_right_y_axis"] = ", ".join(
-                [m for m in metrics_right if m in all_metrics]
-            )
+        unit_param_dict_readable["plotting"] = unit_param_dict_readable_plotting
+
+        unit_param_dict_readable_alg: dict[str, str | float] = {}
         for k, v in unit_param_dict.items():
-            unit_param_dict_readable[k] = make_param_readable(v)
+            unit_param_dict_readable_alg[k] = make_param_readable(v)
+        unit_param_dict_readable["algorithm"] = unit_param_dict_readable_alg
+
         with open(os.path.join(output_dir, f"{fname_prefix}.yaml"), "w") as sf:
             yaml.dump(unit_param_dict_readable, sf)
 
@@ -206,7 +220,7 @@ def main(
             unit_param_dict,
             keep_trace=UNIT_TRAIN_LOG_TRACE,
             include_valid=UNIT_VALID_DO,
-            include_group_metrics=group_metrics,
+            include_group_metrics=calc_between_groups,
             valid_times=valid_times,
             thr_granularity=thr_granularity,
             no_threading=no_threading,
@@ -222,95 +236,38 @@ def main(
         else:
             print(flush=True)
 
-        train_results = {ps: result[0] for ps, result in results.items()}
-        valid_results = {ps: result[1] for ps, result in results.items()}
-
         # plot results
         print("plotting:", flush=True)
 
-        for m in UNIT_METRICS_TRACE:
-            fig = plot_training_traces_by_c(
-                train_results,
-                metrics=m,
-                metrics_right=metrics_right,
-                figsize=figsize,
-                coloring_rules=coloring_rules,
-                styling_rules=styling_rules,
-                use_tex=use_tex,
-            )
-            m_trace_pdf_path = os.path.join(
-                output_dir,
-                f"{fname_prefix}_{'-'.join(m)}_trace.pdf",
-            )
-            save_fig(fig, m_trace_pdf_path)
-            print(f"  ├─ {m} trace saved to {m_trace_pdf_path}")
-            if xlim is not None or ylim is not None:
-                m_trace_magni_pdf_path = os.path.join(
-                    output_dir,
-                    f"{fname_prefix}_{'-'.join(m)}_trace_zoom.pdf",
+        for metric_list in metrics:
+            for pdata in make_plottingdata(
+                results,
+                metric_list,
+                confidence_band,
+                UNIT_PLOT_X_AXIS,
+            ):
+                fig = plot_results(
+                    pdata,
+                    figsize=figsize,
+                    ypad=UNIT_PLOT_YPAD,
+                    xpad=UNIT_PLOT_XPAD,
+                    use_tex=use_tex,
                 )
-                save_fig(fig, m_trace_magni_pdf_path, xlim, ylim)
-                print(f"  ├─ {m} trace saved to {m_trace_magni_pdf_path}")
-            fig.clear()
-            plt.close(fig)
-
-        mg_pair_by_gamma: list[tuple[list[str], list[str] | None]] = []
-        for m in UNIT_METRICS_BY_GAMMA:
-            use_group = False
-            for mi in m:
-                if mi.startswith("group_"):
-                    use_group = True
-                    break
-            if use_group:
-                if apart_groups:
-                    for group_name in classifier.group_names:
-                        mg_pair_by_gamma.append((m, [group_name]))
-                else:
-                    mg_pair_by_gamma.append((m, classifier.group_names))
-            else:
-                mg_pair_by_gamma.append((m, None))
-
-        for m, group_names in mg_pair_by_gamma:
-            fig = plot_valid_results_by_gamma_c(
-                valid_results,  # type: ignore
-                metrics=m,
-                group_names=group_names or ["unknown"],
-                baselines=(
-                    {
-                        ps: {
-                            "ge": result.ge_baseline,
-                            "err": result.err_baseline,
-                        }
-                        for ps, result in train_results.items()
-                    }
-                    if add_baseline
-                    else None
-                ),
-                metrics_right=metrics_right,
-                figsize=figsize,
-                coloring_rules=coloring_rules,
-                styling_rules=styling_rules,
-                confidence_band=confidence_band,
-                use_tex=use_tex,
-            )
-            if group_names is None:
-                m_by_gamma_pdf_path = os.path.join(
+                fig_pdf_path = os.path.join(
                     output_dir,
-                    f"{fname_prefix}_{'-'.join(m)}_by_gamma.pdf",
+                    f"{fname_prefix}_{pdata.name}.pdf",
                 )
-            else:
-                m_by_gamma_pdf_path = os.path.join(
-                    output_dir,
-                    "{}_{}_by_gamma_{}.pdf".format(
-                        fname_prefix,
-                        "-".join(m),
-                        "-".join(group_names),
-                    ),
-                )
-            save_fig(fig, m_by_gamma_pdf_path)
-            fig.clear()
-            plt.close(fig)
-            print(f"  ├─ {m} by gamma saved to {m_by_gamma_pdf_path}")
+                save_fig(fig, fig_pdf_path)
+                print(f"  ├─ saved {fig_pdf_path}")
+                if not (xlim is None and ylim is None):
+                    fig_zoom_pdf_path = os.path.join(
+                        output_dir,
+                        f"{fname_prefix}_{pdata.name}_zoom.pdf",
+                    )
+                    save_fig(fig, fig_zoom_pdf_path, xlim, ylim)
+                    print(f"  ├─ saved {fig_zoom_pdf_path}")
+                fig.clear()
+                plt.close(fig)
 
         print("  └─ (drawing done)", flush=True)
 
@@ -422,9 +379,9 @@ if __name__ == "__main__":
         help="maximum number of iterations for binary logistic classifier",
     )
     expopt.add_argument(
-        "--group_metrics",
+        "--calc_between_groups",
         action="store_true",
-        help="compute metrics between groups if set",
+        help="compute values between groups if set",
     )
     expopt.add_argument(
         "--thr_granularity",
@@ -448,21 +405,7 @@ if __name__ == "__main__":
         type=str,
         nargs="*",
         required=True,
-        choices=PLOTABLE_METRICS,
-        help="metrics to plot",
-    )
-    plotopt.add_argument(
-        "--metrics_right",
-        type=str,
-        nargs="*",
-        choices=PLOTABLE_METRICS,
-        default=[],
-        help="metrics to plot on the right y-axis (applied for all plots)",
-    )
-    plotopt.add_argument(
-        "--apart_groups",
-        action="store_true",
-        help="plot metrics for each group separately if set",
+        help="metrics in form of '{t,v}:EXPR[:{e,b,c,s,l,a,n}!EXPR]...)'",
     )
     plotopt.add_argument(
         "--figsize",
@@ -478,7 +421,7 @@ if __name__ == "__main__":
         nargs=2,
         default=None,
         metavar=("LEFT", "RIGHT"),
-        help="xlim range; only applied for 'convergence' studies",
+        help="xlim range that applies to all plots",
     )
     plotopt.add_argument(
         "--ylim",
@@ -486,35 +429,14 @@ if __name__ == "__main__":
         nargs=2,
         default=None,
         metavar=("BOTTOM", "TOP"),
-        help="ylim range; only applied for 'convergence' studies",
-    )
-    plotopt.add_argument(
-        "--coloring_rules",
-        type=str,
-        nargs="+",
-        default=None,
-        metavar="RULE",
-        help="line colors, by params, metrics, and groups (e.g. c=0.9:red)",
-    )
-    plotopt.add_argument(
-        "--styling_rules",
-        type=str,
-        nargs="+",
-        default=None,
-        metavar="RULE",
-        help="line styles, by params, metrics, and groups (e.g. m=err:solid)",
+        help="ylim range that applies to all plots",
     )
     plotopt.add_argument(
         "--confidence_band",
         type=float,
         default=0.0,
         metavar="P",
-        help="confidence (P%%) band; only applied for 'varying_gamma' studies",
-    )
-    plotopt.add_argument(
-        "--add_baseline",
-        action="store_true",
-        help="add dashed baseline; only applied for 'varying_gamma' studies",
+        help="confidence (P%%) band",
     )
     plotopt.add_argument(
         "--use_tex",
@@ -542,8 +464,6 @@ if __name__ == "__main__":
     args.figsize = tuple(args.figsize)
     args.xlim = tuple(args.xlim) if args.xlim is not None else None
     args.ylim = tuple(args.ylim) if args.ylim is not None else None
-    args.coloring_rules = parse_plotting_rules(args.coloring_rules or [])
-    args.styling_rules = parse_plotting_rules(args.styling_rules or [])
 
     print("args:", args)
     main(**args.__dict__)

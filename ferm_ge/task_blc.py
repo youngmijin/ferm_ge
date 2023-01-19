@@ -3,6 +3,8 @@ from numpy.typing import NDArray
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import confusion_matrix
 
+__all__ = ["BinaryLogisticClassification"]
+
 
 class BinaryLogisticClassification:
     def __init__(self, max_iter: int = 1000):
