@@ -348,7 +348,7 @@ def make_plottingdata(
                 data.x[part_id] = x_list
                 data.y[part_id] = y_list
 
-        data.name = "-".join(list(set(data_names)))
+        data.name = "-".join(sorted(list(set(data_names))))
 
         yield data
 

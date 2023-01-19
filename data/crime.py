@@ -1,5 +1,4 @@
 import os
-import warnings
 
 import numpy as np
 import pandas as pd
@@ -114,20 +113,6 @@ class CommunitiesAndCrime(Dataset):
         y_train = y_train.reset_index(drop=True)
         y_valid = y_valid.reset_index(drop=True)
 
-        self.group_1_train_indices = X_train.index[  # type: ignore
-            X_train["racepctblack"] >= 0.06  # type: ignore
-        ].to_numpy()
-        self.group_2_train_indices = X_train.index[  # type: ignore
-            X_train["racepctblack"] < 0.06  # type: ignore
-        ].to_numpy()
-
-        self.group_1_valid_indices = X_valid.index[  # type: ignore
-            X_valid["racepctblack"] >= 0.06  # type: ignore
-        ].to_numpy()
-        self.group_2_valid_indices = X_valid.index[  # type: ignore
-            X_valid["racepctblack"] < 0.06  # type: ignore
-        ].to_numpy()
-
         categorical_features = X.select_dtypes(include=["object"]).columns
         categorical_transformer = OneHotEncoder(handle_unknown="ignore")
 
@@ -145,6 +130,20 @@ class CommunitiesAndCrime(Dataset):
 
         self.X_train = preprocessor.fit_transform(X_train)  # type: ignore
         self.X_valid = preprocessor.transform(X_valid)  # type: ignore
+
+        self.group_1_train_indices = X_train.index[  # type: ignore
+            X_train["racepctblack"] >= 3  # type: ignore
+        ].to_numpy()
+        self.group_2_train_indices = X_train.index[  # type: ignore
+            X_train["racepctblack"] < 3  # type: ignore
+        ].to_numpy()
+
+        self.group_1_valid_indices = X_valid.index[  # type: ignore
+            X_valid["racepctblack"] >= 3  # type: ignore
+        ].to_numpy()
+        self.group_2_valid_indices = X_valid.index[  # type: ignore
+            X_valid["racepctblack"] < 3  # type: ignore
+        ].to_numpy()
 
         self.y_train = y_train.to_numpy()  # type: ignore
         self.y_valid = y_valid.to_numpy()  # type: ignore
