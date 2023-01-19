@@ -40,13 +40,10 @@ def make_param_readable(param: list[float]) -> str | float:
 
 
 def make_metric_readble(metric: str) -> dict[str, str]:
-    tgt, exp_val, _, _, axis, color, style, label, _ = parse_metric(metric)
+    tgt, exp_val, _, _, axis, color, style, _, _, _ = parse_metric(metric)
     return {
         "value": f"{exp_val} from {tgt}",
-        "axis": axis,
-        "color": color,
-        "style": style,
-        "label": label or "(no label for legend)",
+        "line": f"{color} {style} line on {axis} axis",
     }
 
 
@@ -163,7 +160,7 @@ def main(
     elif study_type == "varying_gamma":
         UNIT_TRAIN_LOG_TRACE = False
         UNIT_VALID_DO = True
-        UNIT_PLOT_X_AXIS = "p:gamma"
+        UNIT_PLOT_X_AXIS = "p.gamma"
         UNIT_PLOT_XPAD = 0.0
         UNIT_PLOT_YPAD = 0.15
     else:
@@ -405,7 +402,7 @@ if __name__ == "__main__":
         type=str,
         nargs="*",
         required=True,
-        help="metrics in form of '{t,v}:EXPR[:{e,b,c,s,l,a,n}!EXPR]...)'",
+        help="metrics in form of '{t,v}:EXPR[:{e,b,c,s,l,a,n,f}!EXPR]...)'",
     )
     plotopt.add_argument(
         "--figsize",

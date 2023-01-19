@@ -5,7 +5,7 @@ import statistics
 from collections import defaultdict
 from dataclasses import dataclass
 from itertools import product
-from typing import Generator, Literal
+from typing import Callable, Generator, Literal
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -91,7 +91,18 @@ def __resample(
 
 def parse_metric(
     metric: str,
-) -> tuple[TV, str, str | None, str | None, LR, str, str, str | None, str]:
+) -> tuple[
+    TV,
+    str,
+    str | None,
+    str | None,
+    LR,
+    str,
+    str,
+    str | None,
+    str,
+    Callable[[ParamSet], bool],
+]:
     target: TV
     if metric.startswith("t:"):
         target = "train"
@@ -101,7 +112,7 @@ def parse_metric(
         raise ValueError("metric must start with t: or v:")
 
     metric_items = metric[2:].split(":")
-    exp = metric_items[0]
+    exp_val = metric_items[0]
 
     exp_err = None
     exp_base = None
@@ -110,6 +121,7 @@ def parse_metric(
     linestyle = DEFAULT_LINESTYLE
     legend = None
     name = None
+    filts: list[str] = []
     for metric_item in metric_items[1:]:
         if metric_item.startswith("e!"):
             exp_err = metric_item[2:]
@@ -129,13 +141,29 @@ def parse_metric(
             axis = metric_item[2:]  # type: ignore
         elif metric_item.startswith("n!"):
             name = metric_item[2:]
+        elif metric_item.startswith("f!"):
+            filts = metric_item[2:].split(",")
         else:
             raise ValueError(f"unknown metric item: {metric_item}")
 
     if name is None:
-        name = re.sub(r"\W+", "", exp)
+        name = re.sub(r"\W+", "", exp_val)
 
-    return target, exp, exp_err, exp_base, axis, color, linestyle, legend, name
+    def filt(ps: ParamSet) -> bool:
+        return all([bool(eval(f, {"p": ps})) for f in filts])
+
+    return (
+        target,
+        exp_val,
+        exp_err,
+        exp_base,
+        axis,
+        color,
+        linestyle,
+        legend,
+        name,
+        filt,
+    )
 
 
 def make_plottingdata(
@@ -143,7 +171,7 @@ def make_plottingdata(
     metrics: list[str],
     confidence: float = 0.0,
     x_axis: str | None = None,
-    figsep_rules: list[str] = ["p:alpha"],
+    figsep_rules: list[str] = ["p.alpha"],
 ) -> Generator[PlottingData, None, None]:
     assert (
         confidence >= 0 and confidence < 1
@@ -153,16 +181,17 @@ def make_plottingdata(
     # metrics_left and metrics_right are lists of metric strings that are
     # plotted on the left and right y-axis, respectively.
     # Metric strings are formatted as follows:
-    #   "{t,v}:EXPRESSION1[:{e,b,c,s,l,a,n}!EXPRESSION2]..."
+    #   "{t,v}:EXPRESSION1[:{e,b,c,s,l,a,n,f}!EXPRESSION2]..."
     #     - t: train results, v: valid results
     #     - EXPRESSION: to be evaluated or just the name of the attribute
-    #     - e!: use the given expression as confidence band
+    #     - e!: use the given expression as confidence band (stddev)
     #     - b!: use the given expression as baseline
     #     - c!: use the given color (optional; default: black)
     #     - s!: use the given linestyle (optional; default: solid)
     #     - l!: use the given legend (optional; default: None)
     #     - a!: use the given axis (optional; default: left)
-    #     - n!: use the given name (optional; default: same as EXPRESSION1)
+    #     - n!: use the given name (optional; default: extracted from EXPRESSION1)
+    #     - f!: use the given filter (optional; default: no filtering)
     assert len(metrics) > 0, "metrics must not be empty"
     use_train_results = False
     use_valid_results = False
@@ -172,8 +201,8 @@ def make_plottingdata(
             assert x_axis is None, "x_axis cannot be used with train results"
             use_train_results = True
         elif metric.startswith("v:"):
-            assert x_axis is not None and x_axis.startswith(
-                "p:"
+            assert (
+                x_axis is not None and x_axis[:2] == "p."
             ), "x_axis must be specified using parameters with valid results"
             use_valid_results = True
         else:
@@ -187,7 +216,7 @@ def make_plottingdata(
     # then the figures will be separated by lambda_max and nu.
     figsep_baselist: list[set[tuple[str, float]]] = []
     for rule_str in figsep_rules:
-        assert rule_str.startswith("p:"), "rule must start with p:"
+        assert rule_str.startswith("p."), "rule must start with p."
         rule_name = rule_str[2:]
         assert (
             rule_name in ParamSet.__annotations__
@@ -199,7 +228,7 @@ def make_plottingdata(
 
     figsep: tuple[tuple[str, float]]
     for figsep in product(*figsep_baselist):  # type: ignore
-        ps_list = []
+        ps_list: list[ParamSet] = []
         for ps in results:
             use_this = True
             for rule_p, rule_pv in figsep:
@@ -221,19 +250,33 @@ def make_plottingdata(
         if use_train_results:
             for ps in ps_list:
                 for metric in metrics:
-                    part_id = f"{ps}_{metric}"
                     (
                         _,
                         exp,
                         _,
                         _,
-                        data.axis[part_id],
-                        data.color[part_id],
-                        data.linestyle[part_id],
-                        data.legend[part_id],
+                        axis,
+                        color,
+                        linestyle,
+                        legend_label,
                         name,
+                        filt,
                     ) = parse_metric(metric)
+                    if not filt(ps):
+                        continue
                     data_names.append(name)
+
+                    part_id = f"{ps}_{metric}"
+
+                    data.axis[part_id] = axis
+                    data.color[part_id] = color
+                    data.linestyle[part_id] = linestyle
+
+                    if legend_label is not None:
+                        data.legend[part_id] = legend_label.format(
+                            **ps.__dict__
+                        )
+
                     data.x[part_id], data.y[part_id] = __resample(
                         np.array(
                             eval(
@@ -252,17 +295,30 @@ def make_plottingdata(
                     exp_val,
                     exp_err,
                     exp_base,
-                    data.axis[part_id],
-                    data.color[part_id],
-                    data.linestyle[part_id],
-                    data.legend[part_id],
+                    axis,
+                    color,
+                    linestyle,
+                    legend_label,
                     name,
+                    filt,
                 ) = parse_metric(metric)
+
+                ps_list_filtered = []
+                for ps in ps_list:
+                    if filt(ps):
+                        ps_list_filtered.append(ps)
+
+                if len(ps_list_filtered) == 0:
+                    continue
                 data_names.append(name)
+
+                data.axis[part_id] = axis
+                data.color[part_id] = color
+                data.linestyle[part_id] = linestyle
 
                 if exp_err is not None:
                     err_list = []
-                    for ps in ps_list:
+                    for ps in ps_list_filtered:
                         err_list.append(
                             float(eval(exp_err, results[ps][1].__dict__))
                             * z_value
@@ -271,15 +327,20 @@ def make_plottingdata(
 
                 if exp_base is not None:
                     base_list = []
-                    for ps in ps_list:
+                    for ps in ps_list_filtered:
                         base_list.append(
                             float(eval(exp_base, results[ps][1].__dict__))
                         )
                     data.base[part_id] = list(set(base_list))
 
+                if legend_label is not None:
+                    data.legend[part_id] = legend_label.format(
+                        **ps_list_filtered[0].__dict__
+                    )
+
                 x_list = []
                 y_list = []
-                for ps in ps_list:
+                for ps in ps_list_filtered:
                     x = float(getattr(ps, x_axis[2:]))
                     y = float(eval(exp_val, results[ps][1].__dict__))
                     x_list.append(x)
@@ -287,7 +348,7 @@ def make_plottingdata(
                 data.x[part_id] = x_list
                 data.y[part_id] = y_list
 
-        data.name = "-".join(data_names)
+        data.name = "-".join(list(set(data_names)))
 
         yield data
 
@@ -311,7 +372,7 @@ def plot_results(
         plt.rcParams["pdf.use14corefonts"] = False
         plt.rcParams["text.usetex"] = False
 
-    keys = sorted(data.y.keys())
+    keys = data.y.keys()
 
     use_axr = any([data.axis[k] == "right" for k in keys])
     use_axl = any([data.axis[k] == "left" for k in keys])
