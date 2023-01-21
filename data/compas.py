@@ -72,6 +72,7 @@ class COMPAS(Dataset):
         )
         for col_name in ["c_charge_degree", "age_cat"]:
             compas[col_name] = compas[col_name].astype("category").cat.codes
+        compas["two_year_recid"] = (compas["two_year_recid"] - 1) * -1
 
         X = compas.drop(columns="two_year_recid")
         y = compas["two_year_recid"]
