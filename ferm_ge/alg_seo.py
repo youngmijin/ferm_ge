@@ -15,7 +15,15 @@ def calc_aseo(
     group_fp: NDArray[np.float_],
     group_fn: NDArray[np.float_],
     group_tp: NDArray[np.float_],
-) -> tuple[float, float, float, NDArray[np.float_], NDArray[np.float_]]:
+) -> tuple[
+    float,
+    float,
+    float,
+    NDArray[np.float_],
+    NDArray[np.float_],
+    float,
+    float,
+]:
     """Calculates scalar-valued equality odds with rFP, rFN values."""
 
     assert group_tn.ndim == group_fp.ndim == group_fn.ndim == group_tp.ndim == 1
@@ -54,4 +62,6 @@ def calc_aseo(
         aseo_fn,
         group_rfp,
         group_rfn,
+        float(total_rfp[0]),
+        float(total_rfn[0]),
     )

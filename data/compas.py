@@ -1,12 +1,9 @@
 import os
-import warnings
 
 import numpy as np
 import pandas as pd
 from numpy.typing import NDArray
-from sklearn.compose import ColumnTransformer
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
 from .dataset import Dataset
 
@@ -18,24 +15,14 @@ class COMPAS(Dataset):
     """
 
     def __init__(self):
-        warnings.warn(
-            "The COMPAS dataset may cause overfitting. Consider using the "
-            "blc_max_iter argument to limit the number of fitting iterations.",
-            UserWarning,
-        )
-
         self.X_train: NDArray[np.float_] | None = None
         self.y_train: NDArray[np.float_] | None = None
         self.X_valid: NDArray[np.float_] | None = None
         self.y_valid: NDArray[np.float_] | None = None
 
-        self.group_1_name = "African-American"
-        self.group_1_train_indices: NDArray[np.intp] | None = None
-        self.group_1_valid_indices: NDArray[np.intp] | None = None
-
-        self.group_2_name = "Caucasian"
-        self.group_2_train_indices: NDArray[np.intp] | None = None
-        self.group_2_valid_indices: NDArray[np.intp] | None = None
+        self.group_indices: dict[
+            str, tuple[NDArray[np.intp], NDArray[np.intp]]
+        ] | None = None
 
     @property
     def name(self) -> str:
@@ -63,22 +50,28 @@ class COMPAS(Dataset):
         compas = compas[compas["c_charge_degree"] != "O"]
         compas = compas[compas["score_text"] != "N/A"]
         compas = compas[compas["race"].isin(["African-American", "Caucasian"])]
+        compas = compas[compas["score_text"] != "Low"]
         compas = compas[
             [
-                "age",
                 "c_charge_degree",
                 "race",
                 "age_cat",
                 "score_text",
                 "sex",
-                "priors_count",
-                "days_b_screening_arrest",
-                "decile_score",
-                "is_recid",
                 "two_year_recid",
+                "priors_count",
             ]
         ]
         compas = compas.dropna()
+        compas["sex"] = compas["sex"].replace({"Female": 1, "Male": 0})
+        compas["race"] = compas["race"].replace(
+            {"African-American": 0, "Caucasian": 1}
+        )
+        compas["score_text"] = compas["score_text"].replace(
+            {"Medium": 0, "High": 1}
+        )
+        for col_name in ["c_charge_degree", "age_cat"]:
+            compas[col_name] = compas[col_name].astype("category").cat.codes
 
         X = compas.drop(columns="two_year_recid")
         y = compas["two_year_recid"]
@@ -96,40 +89,22 @@ class COMPAS(Dataset):
         y_train = y_train.reset_index(drop=True)
         y_valid = y_valid.reset_index(drop=True)
 
-        self.group_1_train_indices = X_train.index[  # type: ignore
-            X_train["race"] == "African-American"  # type: ignore
-        ].to_numpy()
-        self.group_2_train_indices = X_train.index[  # type: ignore
-            X_train["race"] == "Caucasian"  # type: ignore
-        ].to_numpy()
+        self.group_indices = {
+            "African-American": (
+                X_train.index[X_train["race"] == 0].to_numpy(),
+                X_valid.index[X_valid["race"] == 0].to_numpy(),
+            ),
+            "Caucasian": (
+                X_train.index[X_train["race"] == 1].to_numpy(),
+                X_valid.index[X_valid["race"] == 1].to_numpy(),
+            ),
+        }
 
-        self.group_1_valid_indices = X_valid.index[  # type: ignore
-            X_valid["race"] == "African-American"  # type: ignore
-        ].to_numpy()
-        self.group_2_valid_indices = X_valid.index[  # type: ignore
-            X_valid["race"] == "Caucasian"  # type: ignore
-        ].to_numpy()
+        self.X_train = X_train.to_numpy()
+        self.X_valid = X_valid.to_numpy()
 
-        categorical_features = X.select_dtypes(include=["object"]).columns
-        categorical_transformer = OneHotEncoder(handle_unknown="ignore")
-
-        numerical_features = X.select_dtypes(
-            include=["int64", "float64"]
-        ).columns
-        numerical_transformer = StandardScaler()
-
-        preprocessor = ColumnTransformer(
-            transformers=[
-                ("cat", categorical_transformer, categorical_features),
-                ("num", numerical_transformer, numerical_features),
-            ]
-        )
-
-        self.X_train = preprocessor.fit_transform(X_train)  # type: ignore
-        self.X_valid = preprocessor.transform(X_valid)  # type: ignore
-
-        self.y_train = y_train.to_numpy()  # type: ignore
-        self.y_valid = y_valid.to_numpy()  # type: ignore
+        self.y_train = y_train.to_numpy()
+        self.y_valid = y_valid.to_numpy()
 
     @property
     def train_data(self) -> tuple[NDArray[np.float_], NDArray[np.float_]]:
@@ -145,26 +120,10 @@ class COMPAS(Dataset):
 
     @property
     def train_group_indices(self) -> dict[str, NDArray[np.intp]]:
-        assert (
-            self.group_1_train_indices is not None
-        ), "group_1_train_indices is not loaded"
-        assert (
-            self.group_2_train_indices is not None
-        ), "group_2_train_indices is not loaded"
-        return {
-            self.group_1_name: self.group_1_train_indices,
-            self.group_2_name: self.group_2_train_indices,
-        }
+        assert self.group_indices is not None, "group_indices is not loaded"
+        return {k: v[0] for k, v in self.group_indices.items()}
 
     @property
     def valid_group_indices(self) -> dict[str, NDArray[np.intp]]:
-        assert (
-            self.group_1_valid_indices is not None
-        ), "group_1_valid_indices is not loaded"
-        assert (
-            self.group_2_valid_indices is not None
-        ), "group_2_valid_indices is not loaded"
-        return {
-            self.group_1_name: self.group_1_valid_indices,
-            self.group_2_name: self.group_2_valid_indices,
-        }
+        assert self.group_indices is not None, "group_indices is not loaded"
+        return {k: v[1] for k, v in self.group_indices.items()}

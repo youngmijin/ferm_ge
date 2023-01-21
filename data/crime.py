@@ -1,11 +1,10 @@
 import os
+import warnings
 
 import numpy as np
 import pandas as pd
 from numpy.typing import NDArray
-from sklearn.compose import ColumnTransformer
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
 from .dataset import Dataset
 
@@ -17,18 +16,20 @@ class CommunitiesAndCrime(Dataset):
     """
 
     def __init__(self):
+        warnings.warn(
+            "The Communities and Crime dataset may cause overfitting. In some "
+            "cases, the false positive rate can be zero.",
+            UserWarning,
+        )
+
         self.X_train: NDArray[np.float_] | None = None
         self.y_train: NDArray[np.float_] | None = None
         self.X_valid: NDArray[np.float_] | None = None
         self.y_valid: NDArray[np.float_] | None = None
 
-        self.group_1_name = "African-American"
-        self.group_1_train_indices: NDArray[np.intp] | None = None
-        self.group_1_valid_indices: NDArray[np.intp] | None = None
-
-        self.group_2_name = "Non-African-American"
-        self.group_2_train_indices: NDArray[np.intp] | None = None
-        self.group_2_valid_indices: NDArray[np.intp] | None = None
+        self.group_indices: dict[
+            str, tuple[NDArray[np.intp], NDArray[np.intp]]
+        ] | None = None
 
     @property
     def name(self) -> str:
@@ -74,31 +75,17 @@ class CommunitiesAndCrime(Dataset):
         ]
         crime = crime.replace({"?": np.nan})
         crime = crime.dropna()
+        crime = crime.reset_index(drop=True)
 
-        crime["ViolentCrimesPerPop"] = crime["ViolentCrimesPerPop"].astype(
-            float
+        crime["class"] = (
+            crime["ViolentCrimesPerPop"]
+            .astype(float)
+            .apply(lambda x: 1 if x >= 1700 else 0)
         )
-        crime_ViolentCrimesPerPop_max = crime["ViolentCrimesPerPop"].max()
-        crime_ViolentCrimesPerPop_min = crime["ViolentCrimesPerPop"].min()
-        crime["ViolentCrimesPerPop"] = (
-            crime["ViolentCrimesPerPop"] - crime_ViolentCrimesPerPop_min
-        ) / (crime_ViolentCrimesPerPop_max - crime_ViolentCrimesPerPop_min)
+        crime = crime.drop(columns="ViolentCrimesPerPop")
 
-        crime_ViolentCrimesPerPop_0_07_upper_loc = crime[
-            crime["ViolentCrimesPerPop"] >= 0.07
-        ].index
-        crime_ViolentCrimesPerPop_0_07_lower_loc = crime[
-            crime["ViolentCrimesPerPop"] < 0.07
-        ].index
-        crime.loc[
-            crime_ViolentCrimesPerPop_0_07_upper_loc, "ViolentCrimesPerPop"
-        ] = 1
-        crime.loc[
-            crime_ViolentCrimesPerPop_0_07_lower_loc, "ViolentCrimesPerPop"
-        ] = 0
-
-        X = crime.drop(columns="ViolentCrimesPerPop")
-        y = crime["ViolentCrimesPerPop"]
+        X = crime.drop(columns="class")
+        y = crime["class"]
 
         X_train: pd.DataFrame
         X_valid: pd.DataFrame
@@ -113,40 +100,22 @@ class CommunitiesAndCrime(Dataset):
         y_train = y_train.reset_index(drop=True)
         y_valid = y_valid.reset_index(drop=True)
 
-        categorical_features = X.select_dtypes(include=["object"]).columns
-        categorical_transformer = OneHotEncoder(handle_unknown="ignore")
+        self.group_indices = {
+            "Lower-AfrAm-Rate": (
+                X_train.index[X_train["racepctblack"] < 30].to_numpy(),
+                X_valid.index[X_valid["racepctblack"] < 30].to_numpy(),
+            ),
+            "Higher-AfrAm-Rate": (
+                X_train.index[X_train["racepctblack"] >= 30].to_numpy(),
+                X_valid.index[X_valid["racepctblack"] >= 30].to_numpy(),
+            ),
+        }
 
-        numerical_features = X.select_dtypes(
-            include=["int64", "float64"]
-        ).columns
-        numerical_transformer = StandardScaler()
+        self.X_train = X_train.to_numpy()
+        self.X_valid = X_valid.to_numpy()
 
-        preprocessor = ColumnTransformer(
-            transformers=[
-                ("cat", categorical_transformer, categorical_features),
-                ("num", numerical_transformer, numerical_features),
-            ]
-        )
-
-        self.X_train = preprocessor.fit_transform(X_train)  # type: ignore
-        self.X_valid = preprocessor.transform(X_valid)  # type: ignore
-
-        self.group_1_train_indices = X_train.index[  # type: ignore
-            X_train["racepctblack"] >= 3  # type: ignore
-        ].to_numpy()
-        self.group_2_train_indices = X_train.index[  # type: ignore
-            X_train["racepctblack"] < 3  # type: ignore
-        ].to_numpy()
-
-        self.group_1_valid_indices = X_valid.index[  # type: ignore
-            X_valid["racepctblack"] >= 3  # type: ignore
-        ].to_numpy()
-        self.group_2_valid_indices = X_valid.index[  # type: ignore
-            X_valid["racepctblack"] < 3  # type: ignore
-        ].to_numpy()
-
-        self.y_train = y_train.to_numpy()  # type: ignore
-        self.y_valid = y_valid.to_numpy()  # type: ignore
+        self.y_train = y_train.to_numpy()
+        self.y_valid = y_valid.to_numpy()
 
     @property
     def train_data(self) -> tuple[NDArray[np.float_], NDArray[np.float_]]:
@@ -162,26 +131,10 @@ class CommunitiesAndCrime(Dataset):
 
     @property
     def train_group_indices(self) -> dict[str, NDArray[np.intp]]:
-        assert (
-            self.group_1_train_indices is not None
-        ), "group_1_train_indices is not loaded"
-        assert (
-            self.group_2_train_indices is not None
-        ), "group_2_train_indices is not loaded"
-        return {
-            self.group_1_name: self.group_1_train_indices,
-            self.group_2_name: self.group_2_train_indices,
-        }
+        assert self.group_indices is not None, "group_indices is not loaded"
+        return {k: v[0] for k, v in self.group_indices.items()}
 
     @property
     def valid_group_indices(self) -> dict[str, NDArray[np.intp]]:
-        assert (
-            self.group_1_valid_indices is not None
-        ), "group_1_valid_indices is not loaded"
-        assert (
-            self.group_2_valid_indices is not None
-        ), "group_2_valid_indices is not loaded"
-        return {
-            self.group_1_name: self.group_1_valid_indices,
-            self.group_2_name: self.group_2_valid_indices,
-        }
+        assert self.group_indices is not None, "group_indices is not loaded"
+        return {k: v[1] for k, v in self.group_indices.items()}

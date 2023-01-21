@@ -24,13 +24,9 @@ class Adult(Dataset):
         self.X_valid: NDArray[np.float_] | None = None
         self.y_valid: NDArray[np.float_] | None = None
 
-        self.group_1_name = "female"
-        self.group_1_train_indices: NDArray[np.intp] | None = None
-        self.group_1_valid_indices: NDArray[np.intp] | None = None
-
-        self.group_2_name = "male"
-        self.group_2_train_indices: NDArray[np.intp] | None = None
-        self.group_2_valid_indices: NDArray[np.intp] | None = None
+        self.group_indices: dict[
+            str, tuple[NDArray[np.intp], NDArray[np.intp]]
+        ] | None = None
 
     @property
     def name(self) -> str:
@@ -72,28 +68,21 @@ class Adult(Dataset):
         y_train = y_train.reset_index(drop=True)
         y_valid = y_valid.reset_index(drop=True)
 
-        self.group_1_train_indices = X_train.index[  # type: ignore
-            X_train["gender"] == "Female"  # type: ignore
-        ].to_numpy()
-        self.group_2_train_indices = X_train.index[  # type: ignore
-            X_train["gender"] != "Female"  # type: ignore
-        ].to_numpy()
+        self.group_indices = {
+            "female": (
+                X_train.index[X_train["gender"] == "Female"].to_numpy(),
+                X_valid.index[X_valid["gender"] == "Female"].to_numpy(),
+            ),
+            "male": (
+                X_train.index[X_train["gender"] != "Female"].to_numpy(),
+                X_valid.index[X_valid["gender"] != "Female"].to_numpy(),
+            ),
+        }
 
-        self.group_1_valid_indices = X_valid.index[  # type: ignore
-            X_valid["gender"] == "Female"  # type: ignore
-        ].to_numpy()
-        self.group_2_valid_indices = X_valid.index[  # type: ignore
-            X_valid["gender"] != "Female"  # type: ignore
-        ].to_numpy()
-
-        categorical_features = X.select_dtypes(
-            include=["object", "bool"]
-        ).columns
+        categorical_features = X.select_dtypes(include=["object"]).columns
         categorical_transformer = OneHotEncoder(handle_unknown="ignore")
 
-        numerical_features = X.select_dtypes(
-            include=["int64", "float64"]
-        ).columns
+        numerical_features = X.select_dtypes(include=["int64"]).columns
         numerical_transformer = StandardScaler()
 
         preprocessor = ColumnTransformer(
@@ -106,8 +95,8 @@ class Adult(Dataset):
         self.X_train = preprocessor.fit_transform(X_train).A  # type: ignore
         self.X_valid = preprocessor.transform(X_valid).A  # type: ignore
 
-        self.y_train = y_train.to_numpy()  # type: ignore
-        self.y_valid = y_valid.to_numpy()  # type: ignore
+        self.y_train = y_train.to_numpy()
+        self.y_valid = y_valid.to_numpy()
 
     @property
     def train_data(self) -> tuple[NDArray[np.float_], NDArray[np.float_]]:
@@ -123,26 +112,10 @@ class Adult(Dataset):
 
     @property
     def train_group_indices(self) -> dict[str, NDArray[np.intp]]:
-        assert (
-            self.group_1_train_indices is not None
-        ), "group_1_train_indices is not loaded"
-        assert (
-            self.group_2_train_indices is not None
-        ), "group_2_train_indices is not loaded"
-        return {
-            self.group_1_name: self.group_1_train_indices,
-            self.group_2_name: self.group_2_train_indices,
-        }
+        assert self.group_indices is not None, "group_indices is not loaded"
+        return {k: v[0] for k, v in self.group_indices.items()}
 
     @property
     def valid_group_indices(self) -> dict[str, NDArray[np.intp]]:
-        assert (
-            self.group_1_valid_indices is not None
-        ), "group_1_valid_indices is not loaded"
-        assert (
-            self.group_2_valid_indices is not None
-        ), "group_2_valid_indices is not loaded"
-        return {
-            self.group_1_name: self.group_1_valid_indices,
-            self.group_2_name: self.group_2_valid_indices,
-        }
+        assert self.group_indices is not None, "group_indices is not loaded"
+        return {k: v[1] for k, v in self.group_indices.items()}

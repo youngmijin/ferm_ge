@@ -7,8 +7,8 @@ __all__ = ["BinaryLogisticClassification"]
 
 
 class BinaryLogisticClassification:
-    def __init__(self, max_iter: int = 1000):
-        self.classifier = LogisticRegression(max_iter=max_iter)
+    def __init__(self, **kwargs):
+        self.classifier = LogisticRegression(**kwargs)
 
         self.train_proba: NDArray[np.float_] | None = None
         self.train_y: NDArray[np.float_] | None = None

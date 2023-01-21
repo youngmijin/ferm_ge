@@ -40,7 +40,7 @@ def make_param_readable(param: list[float]) -> str | float:
 
 
 def make_metric_readble(metric: str) -> dict[str, str]:
-    tgt, exp_val, _, _, axis, color, style, _, _, _ = parse_metric(metric)
+    tgt, exp_val, _, _, axis, color, style, _, _, _, _ = parse_metric(metric)
     return {
         "value": f"{exp_val} from {tgt}",
         "line": f"{color} {style} line on {axis} axis",
@@ -178,7 +178,6 @@ def main(
         unit_param_dict_readable["dataset"] = data.name
         unit_param_dict_readable["thr_granularity"] = thr_granularity
         unit_param_dict_readable["valid_times"] = valid_times
-        unit_param_dict_readable["study_type"] = study_type
         unit_param_dict_readable["blc_max_iter"] = blc_max_iter
 
         unit_param_dict_readable_plotting: dict[str, Any] = {}
@@ -186,9 +185,7 @@ def main(
             unit_param_dict_readable_plotting["x_axis"] = "iteration"
         elif study_type == "varying_gamma":
             unit_param_dict_readable_plotting["x_axis"] = "gamma"
-        unit_param_dict_readable_plotting["figsize"] = str(figsize)
         unit_param_dict_readable_plotting["confidence_band"] = confidence_band
-        unit_param_dict_readable_plotting["use_tex"] = use_tex
         unit_param_dict_readable_plotting["figures"] = []
         for metric_list in metrics:
             unit_param_dict_readable_plotting_figures = []
@@ -402,7 +399,7 @@ if __name__ == "__main__":
         type=str,
         nargs="*",
         required=True,
-        help="metrics in form of '{t,v}:EXPR[:{e,b,c,s,l,a,n,f}!EXPR]...)'",
+        help="metrics in form of '{t,v}:EXPR[:{e,b,c,s,l,a,n,f,w}!EXPR]...)'",
     )
     plotopt.add_argument(
         "--figsize",

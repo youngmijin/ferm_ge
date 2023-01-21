@@ -48,6 +48,7 @@ class PlottingData:
     axis: defaultdict[str, LR]
     color: defaultdict[str, str]
     linestyle: defaultdict[str, str]
+    linewidth: defaultdict[str, float]
     legend: defaultdict[str, str | None]
 
     @staticmethod
@@ -61,6 +62,7 @@ class PlottingData:
             axis=defaultdict[str, LR](lambda: "left"),
             color=defaultdict[str, str](lambda: DEFAULT_COLOR),
             linestyle=defaultdict[str, str](lambda: DEFAULT_LINESTYLE),
+            linewidth=defaultdict[str, float](lambda: 1.5),
             legend=defaultdict[str, str | None](lambda: None),
         )
 
@@ -101,6 +103,7 @@ def parse_metric(
     str,
     str | None,
     str,
+    float,
     Callable[[ParamSet], bool],
 ]:
     target: TV
@@ -119,6 +122,7 @@ def parse_metric(
     axis: LR = "left"
     color = DEFAULT_COLOR
     linestyle = DEFAULT_LINESTYLE
+    linewidth = 1.5
     legend = None
     name = None
     filts: list[str] = []
@@ -143,6 +147,8 @@ def parse_metric(
             name = metric_item[2:]
         elif metric_item.startswith("f!"):
             filts = metric_item[2:].split(",")
+        elif metric_item.startswith("w!"):
+            linewidth = float(metric_item[2:])
         else:
             raise ValueError(f"unknown metric item: {metric_item}")
 
@@ -162,6 +168,7 @@ def parse_metric(
         linestyle,
         legend,
         name,
+        linewidth,
         filt,
     )
 
@@ -181,7 +188,7 @@ def make_plottingdata(
     # metrics_left and metrics_right are lists of metric strings that are
     # plotted on the left and right y-axis, respectively.
     # Metric strings are formatted as follows:
-    #   "{t,v}:EXPRESSION1[:{e,b,c,s,l,a,n,f}!EXPRESSION2]..."
+    #   "{t,v}:EXPRESSION1[:{e,b,c,s,l,a,n,f,w}!EXPRESSION2]..."
     #     - t: train results, v: valid results
     #     - EXPRESSION: to be evaluated or just the name of the attribute
     #     - e!: use the given expression as confidence band (stddev)
@@ -192,6 +199,7 @@ def make_plottingdata(
     #     - a!: use the given axis (optional; default: left)
     #     - n!: use the given name (optional; default: extracted from EXPRESSION1)
     #     - f!: use the given filter (optional; default: no filtering)
+    #     - w!: use the given linewidth (optional; default: 1.5)
     assert len(metrics) > 0, "metrics must not be empty"
     use_train_results = False
     use_valid_results = False
@@ -260,6 +268,7 @@ def make_plottingdata(
                         linestyle,
                         legend_label,
                         name,
+                        linewidth,
                         filt,
                     ) = parse_metric(metric)
                     if not filt(ps):
@@ -271,6 +280,7 @@ def make_plottingdata(
                     data.axis[part_id] = axis
                     data.color[part_id] = color
                     data.linestyle[part_id] = linestyle
+                    data.linewidth[part_id] = linewidth
 
                     if legend_label is not None:
                         data.legend[part_id] = legend_label.format(
@@ -300,6 +310,7 @@ def make_plottingdata(
                     linestyle,
                     legend_label,
                     name,
+                    linewidth,
                     filt,
                 ) = parse_metric(metric)
 
@@ -315,6 +326,7 @@ def make_plottingdata(
                 data.axis[part_id] = axis
                 data.color[part_id] = color
                 data.linestyle[part_id] = linestyle
+                data.linewidth[part_id] = linewidth
 
                 if exp_err is not None:
                     err_list = []
@@ -390,6 +402,8 @@ def plot_results(
         ax = axr if data.axis[k] == "right" else axl
         color = data.color[k]
         linestyle = data.linestyle[k]
+        linewidth = data.linewidth[k]
+        legend = data.legend[k]
 
         y = np.array(data.y[k]).astype(np.float_)
         x = (
@@ -421,6 +435,7 @@ def plot_results(
             y,
             color=color,
             linestyle=linestyle,
+            linewidth=linewidth,
         )
 
         if use_legend:
@@ -429,7 +444,8 @@ def plot_results(
                 [],
                 color=color,
                 linestyle=linestyle,
-                label=data.legend[k],
+                linewidth=linewidth,
+                label=legend,
             )
 
         baseline = data.base[k]

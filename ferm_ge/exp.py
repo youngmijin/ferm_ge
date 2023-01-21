@@ -34,8 +34,11 @@ class ExpValidResult:
     aseo: tuple[float, float] | None
     aseo_fp: tuple[float, float] | None
     aseo_fn: tuple[float, float] | None
+    group_ratio: dict[str, float] | None
     group_rfp: dict[str, tuple[float, float]] | None
     group_rfn: dict[str, tuple[float, float]] | None
+    total_rfp: tuple[float, float] | None
+    total_rfn: tuple[float, float] | None
 
 
 @dataclass
@@ -193,11 +196,15 @@ def run_exp(
             v_aseo: tuple[float, float] | None = None
             v_aseo_fp: tuple[float, float] | None = None
             v_aseo_fn: tuple[float, float] | None = None
+            v_group_ratio: dict[str, float] | None = None
             v_group_rfn: dict[str, tuple[float, float]] | None = None
             v_group_rfp: dict[str, tuple[float, float]] | None = None
+            v_total_rfn: tuple[float, float] | None = None
+            v_total_rfp: tuple[float, float] | None = None
 
             if include_group_metrics:
                 group_cnt = len(classifier.group_names)
+                group_size = np.zeros(group_cnt, dtype=np.int_)
                 v_v_by_thr_idx = np.zeros(v_thr_cnt, dtype=np.float_)
                 v_aseo_by_thr_idx = np.zeros((v_thr_cnt, 3), dtype=np.float_)
                 v_group_rfp_by_thr_idx = np.zeros(
@@ -206,6 +213,8 @@ def run_exp(
                 v_group_rfn_by_thr_idx = np.zeros(
                     (v_thr_cnt, group_cnt), dtype=np.float_
                 )
+                v_total_rfp_by_thr_idx = np.zeros(v_thr_cnt, dtype=np.float_)
+                v_total_rfn_by_thr_idx = np.zeros(v_thr_cnt, dtype=np.float_)
                 for i, thr_idx in enumerate(v_thr_idxs):
                     total_confmat = classifier.predict_valid(
                         thr_candidates[thr_idx]
@@ -218,16 +227,27 @@ def run_exp(
                             thr_candidates[thr_idx], group=group_name
                         )
                         group_confmat[:, group_idx] = confmat.astype(float)
+                        group_size[group_idx] = np.sum(confmat)
                     v_v_by_thr_idx[i] = calc_ge_v(
                         ps.alpha, ps.c, ps.a, *group_confmat
                     )
-                    aseo, aseo_fp, aseo_fn, group_rfp, group_rfn = calc_aseo(
-                        *total_confmat,
-                        *group_confmat,
+                    (
+                        aseo,
+                        aseo_fp,
+                        aseo_fn,
+                        group_rfp,
+                        group_rfn,
+                        total_rfp,
+                        total_rfn,
+                    ) = calc_aseo(
+                        *total_confmat,  # type: ignore
+                        *group_confmat,  # type: ignore
                     )
                     v_aseo_by_thr_idx[i, :] = [aseo, aseo_fp, aseo_fn]
                     v_group_rfp_by_thr_idx[i] = group_rfp
                     v_group_rfn_by_thr_idx[i] = group_rfn
+                    v_total_rfp_by_thr_idx[i] = total_rfp
+                    v_total_rfn_by_thr_idx[i] = total_rfn
                 v_v = get_mean_std(v_v_by_thr_idx, v_thr_probs, v_thr_choices)
                 v_aseo = get_mean_std(
                     v_aseo_by_thr_idx[:, 0], v_thr_probs, v_thr_choices
@@ -239,9 +259,13 @@ def run_exp(
                     v_aseo_by_thr_idx[:, 2], v_thr_probs, v_thr_choices
                 )
 
+                v_group_ratio = {}
                 v_group_rfp = {}
                 v_group_rfn = {}
                 for group_idx, group_name in enumerate(classifier.group_names):
+                    v_group_ratio[group_name] = group_size[group_idx] / np.sum(
+                        group_size
+                    )
                     v_group_rfp[group_name] = get_mean_std(
                         v_group_rfp_by_thr_idx[:, group_idx],
                         v_thr_probs,
@@ -252,6 +276,13 @@ def run_exp(
                         v_thr_probs,
                         v_thr_choices,
                     )
+
+                v_total_rfp = get_mean_std(
+                    v_total_rfp_by_thr_idx, v_thr_probs, v_thr_choices
+                )
+                v_total_rfn = get_mean_std(
+                    v_total_rfn_by_thr_idx, v_thr_probs, v_thr_choices
+                )
 
             valid_result = ExpValidResult(
                 ge=v_ge,
@@ -264,8 +295,11 @@ def run_exp(
                 aseo=v_aseo,
                 aseo_fp=v_aseo_fp,
                 aseo_fn=v_aseo_fn,
+                group_ratio=v_group_ratio,
                 group_rfp=v_group_rfp,
                 group_rfn=v_group_rfn,
+                total_rfp=v_total_rfp,
+                total_rfn=v_total_rfn,
             )
 
         del gefair_result
