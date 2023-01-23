@@ -9,7 +9,7 @@ from numpy.typing import NDArray
 
 from .alg_ge import calc_ge_confmat, calc_ge_v
 from .alg_gefair import GEFairSolver
-from .alg_seo import calc_aseo
+from .alg_rfp_rfn import calc_rfp_rfn
 from .exp_param import ParamSet, get_param_sets
 from .exp_utils import (
     Cache,
@@ -31,9 +31,7 @@ class ExpValidResult:
     err_baseline: float
 
     v: tuple[float, float] | None
-    aseo: tuple[float, float] | None
-    aseo_fp: tuple[float, float] | None
-    aseo_fn: tuple[float, float] | None
+    group_size: dict[str, int] | None
     group_ratio: dict[str, float] | None
     group_rfp: dict[str, tuple[float, float]] | None
     group_rfn: dict[str, tuple[float, float]] | None
@@ -191,11 +189,9 @@ def run_exp(
             v_ge = get_mean_std(v_ge_by_thr_idx, v_thr_probs, v_thr_choices)
             v_err = get_mean_std(v_err_by_thr_idx, v_thr_probs, v_thr_choices)
 
-            # collect testing results - 3 (v & aseo & rfp & rfn)
+            # collect testing results - 3 (v & rfp & rfn)
             v_v: tuple[float, float] | None = None
-            v_aseo: tuple[float, float] | None = None
-            v_aseo_fp: tuple[float, float] | None = None
-            v_aseo_fn: tuple[float, float] | None = None
+            v_group_size: dict[str, int] | None = None
             v_group_ratio: dict[str, float] | None = None
             v_group_rfn: dict[str, tuple[float, float]] | None = None
             v_group_rfp: dict[str, tuple[float, float]] | None = None
@@ -206,7 +202,6 @@ def run_exp(
                 group_cnt = len(classifier.group_names)
                 group_size = np.zeros(group_cnt, dtype=np.int_)
                 v_v_by_thr_idx = np.zeros(v_thr_cnt, dtype=np.float_)
-                v_aseo_by_thr_idx = np.zeros((v_thr_cnt, 3), dtype=np.float_)
                 v_group_rfp_by_thr_idx = np.zeros(
                     (v_thr_cnt, group_cnt), dtype=np.float_
                 )
@@ -232,37 +227,26 @@ def run_exp(
                         ps.alpha, ps.c, ps.a, *group_confmat
                     )
                     (
-                        aseo,
-                        aseo_fp,
-                        aseo_fn,
                         group_rfp,
                         group_rfn,
                         total_rfp,
                         total_rfn,
-                    ) = calc_aseo(
+                    ) = calc_rfp_rfn(
                         *total_confmat,  # type: ignore
                         *group_confmat,  # type: ignore
                     )
-                    v_aseo_by_thr_idx[i, :] = [aseo, aseo_fp, aseo_fn]
                     v_group_rfp_by_thr_idx[i] = group_rfp
                     v_group_rfn_by_thr_idx[i] = group_rfn
                     v_total_rfp_by_thr_idx[i] = total_rfp
                     v_total_rfn_by_thr_idx[i] = total_rfn
                 v_v = get_mean_std(v_v_by_thr_idx, v_thr_probs, v_thr_choices)
-                v_aseo = get_mean_std(
-                    v_aseo_by_thr_idx[:, 0], v_thr_probs, v_thr_choices
-                )
-                v_aseo_fp = get_mean_std(
-                    v_aseo_by_thr_idx[:, 1], v_thr_probs, v_thr_choices
-                )
-                v_aseo_fn = get_mean_std(
-                    v_aseo_by_thr_idx[:, 2], v_thr_probs, v_thr_choices
-                )
 
+                v_group_size = {}
                 v_group_ratio = {}
                 v_group_rfp = {}
                 v_group_rfn = {}
                 for group_idx, group_name in enumerate(classifier.group_names):
+                    v_group_size[group_name] = int(group_size[group_idx])
                     v_group_ratio[group_name] = group_size[group_idx] / np.sum(
                         group_size
                     )
@@ -292,9 +276,7 @@ def run_exp(
                 err=v_err,
                 err_baseline=t_err_by_thr_idx[metric_baseline_idx],
                 v=v_v,
-                aseo=v_aseo,
-                aseo_fp=v_aseo_fp,
-                aseo_fn=v_aseo_fn,
+                group_size=v_group_size,
                 group_ratio=v_group_ratio,
                 group_rfp=v_group_rfp,
                 group_rfn=v_group_rfn,

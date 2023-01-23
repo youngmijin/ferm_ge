@@ -188,16 +188,16 @@ def make_plottingdata(
     # metrics_left and metrics_right are lists of metric strings that are
     # plotted on the left and right y-axis, respectively.
     # Metric strings are formatted as follows:
-    #   "{t,v}:EXPRESSION1[:{e,b,c,s,l,a,n,f,w}!EXPRESSION2]..."
+    #   "{t,v}:EXPR1[:{e,b,c,s,l,a,n,f,w}!EXPR2]..."
     #     - t: train results, v: valid results
-    #     - EXPRESSION: to be evaluated or just the name of the attribute
+    #     - EXPR1: to be evaluated or just the name of the attribute
     #     - e!: use the given expression as confidence band (stddev)
     #     - b!: use the given expression as baseline
     #     - c!: use the given color (optional; default: black)
     #     - s!: use the given linestyle (optional; default: solid)
     #     - l!: use the given legend (optional; default: None)
     #     - a!: use the given axis (optional; default: left)
-    #     - n!: use the given name (optional; default: extracted from EXPRESSION1)
+    #     - n!: use the given name (optional; default: extracted from EXPR1)
     #     - f!: use the given filter (optional; default: no filtering)
     #     - w!: use the given linewidth (optional; default: 1.5)
     assert len(metrics) > 0, "metrics must not be empty"

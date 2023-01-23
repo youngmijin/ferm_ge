@@ -3,9 +3,7 @@ import os
 import numpy as np
 import pandas as pd
 from numpy.typing import NDArray
-from sklearn.compose import ColumnTransformer
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
 from .dataset import Dataset
 
@@ -50,7 +48,19 @@ class Adult(Dataset):
         adult = adult.replace({"?": np.nan})
         adult = adult.dropna()
         adult = adult.replace({"<=50K": 0, ">50K": 1})
+        adult = adult.replace({"Female": 0, "Male": 1})
         adult = adult.reset_index(drop=True)
+
+        for col_name in [
+            "workclass",
+            "education",
+            "marital-status",
+            "occupation",
+            "relationship",
+            "race",
+            "native-country",
+        ]:
+            adult[col_name] = adult[col_name].astype("category").cat.codes
 
         X = adult.drop(columns=["income"])
         y = adult["income"]
@@ -70,30 +80,17 @@ class Adult(Dataset):
 
         self.group_indices = {
             "female": (
-                X_train.index[X_train["gender"] == "Female"].to_numpy(),
-                X_valid.index[X_valid["gender"] == "Female"].to_numpy(),
+                X_train.index[X_train["gender"] == 0].to_numpy(),
+                X_valid.index[X_valid["gender"] == 0].to_numpy(),
             ),
             "male": (
-                X_train.index[X_train["gender"] != "Female"].to_numpy(),
-                X_valid.index[X_valid["gender"] != "Female"].to_numpy(),
+                X_train.index[X_train["gender"] == 1].to_numpy(),
+                X_valid.index[X_valid["gender"] == 1].to_numpy(),
             ),
         }
 
-        categorical_features = X.select_dtypes(include=["object"]).columns
-        categorical_transformer = OneHotEncoder(handle_unknown="ignore")
-
-        numerical_features = X.select_dtypes(include=["int64"]).columns
-        numerical_transformer = StandardScaler()
-
-        preprocessor = ColumnTransformer(
-            transformers=[
-                ("cat", categorical_transformer, categorical_features),
-                ("num", numerical_transformer, numerical_features),
-            ]
-        )
-
-        self.X_train = preprocessor.fit_transform(X_train).A  # type: ignore
-        self.X_valid = preprocessor.transform(X_valid).A  # type: ignore
+        self.X_train = X_train.to_numpy()
+        self.X_valid = X_valid.to_numpy()
 
         self.y_train = y_train.to_numpy()
         self.y_valid = y_valid.to_numpy()

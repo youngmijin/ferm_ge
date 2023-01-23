@@ -202,6 +202,10 @@ class GEFairSolver:
 
         addi_args = " ".join(addi_arg_list)
         os.system(
-            f"g++ -O3 -shared -std=c++11 -fPIC {addi_args} {GEFairSolver.cpp_path} -o {lib_path}"
+            "g++ -O3 -shared -std=c++11 -fPIC {} {} -o {}".format(
+                addi_args,
+                GEFairSolver.cpp_path,
+                lib_path,
+            )
         )
         return lib_path
