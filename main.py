@@ -183,9 +183,10 @@ def main(
         for metric_list in metrics:
             unit_param_dict_readable_plotting_figures = []
             for metric in metric_list:
-                unit_param_dict_readable_plotting_figures.append(
-                    make_metric_readble(metric)
-                )
+                if metric[:2] in ["t:", "v:"]:
+                    unit_param_dict_readable_plotting_figures.append(
+                        make_metric_readble(metric)
+                    )
             unit_param_dict_readable_plotting["figures"].append(
                 unit_param_dict_readable_plotting_figures
             )
@@ -439,7 +440,6 @@ if __name__ == "__main__":
     args.c = [[f for s in l for f in s] for l in args.c]
     args.a = [[f for s in l for f in s] for l in args.a]
 
-    args.figsize = tuple(args.figsize)
     args.xlim = tuple(args.xlim) if args.xlim is not None else None
     args.ylim = tuple(args.ylim) if args.ylim is not None else None
 
