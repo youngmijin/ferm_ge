@@ -17,13 +17,7 @@ from rich import print
 
 from data import Dataset
 from ferm_ge import BinaryLogisticClassification, get_param_sets, run_exp
-from plotting import (
-    DEFAULT_FIGSIZE,
-    make_plottingdata,
-    parse_metric,
-    plot_results,
-    save_fig,
-)
+from plotting import make_plottingdata, parse_metric, plot_results, save_fig
 
 rich.traceback.install(show_locals=True, suppress=[numba])
 
@@ -74,7 +68,6 @@ def main(
     no_threading: bool,
     # plotting options
     metrics: list[list[str]],
-    figsize: tuple[float, float],
     xlim: tuple[float, float] | None,
     ylim: tuple[float, float] | None,
     confidence_band: float,
@@ -242,7 +235,6 @@ def main(
             ):
                 fig = plot_results(
                     pdata,
-                    figsize=figsize,
                     ypad=UNIT_PLOT_YPAD,
                     xpad=UNIT_PLOT_XPAD,
                     use_tex=use_tex,
@@ -399,15 +391,7 @@ if __name__ == "__main__":
         type=str,
         nargs="*",
         required=True,
-        help="metrics in form of '{t,v}:EXPR[:{e,b,c,s,l,a,n,f,w}!EXPR]...)'",
-    )
-    plotopt.add_argument(
-        "--figsize",
-        type=float,
-        nargs=2,
-        default=DEFAULT_FIGSIZE,
-        metavar=("WIDTH", "HEIGHT"),
-        help="figure size for plots",
+        help="metrics in form of '{t,v}:EXPR[:{e,b,c,s,l,a,n,f,w,r}!EXPR]...)'",
     )
     plotopt.add_argument(
         "--xlim",

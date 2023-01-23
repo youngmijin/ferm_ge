@@ -50,16 +50,20 @@ class COMPAS(Dataset):
         compas = compas[compas["c_charge_degree"] != "O"]
         compas = compas[compas["score_text"] != "N/A"]
         compas = compas[compas["race"].isin(["African-American", "Caucasian"])]
-        compas = compas[compas["score_text"] != "Low"]
         compas = compas[
             [
-                "c_charge_degree",
-                "race",
-                "age_cat",
-                "score_text",
                 "sex",
-                "two_year_recid",
+                "age",
+                "age_cat",
+                "race",
+                "juv_fel_count",
+                "juv_misd_count",
+                "juv_other_count",
                 "priors_count",
+                "c_charge_degree",
+                "score_text",
+                "v_score_text",
+                "two_year_recid",
             ]
         ]
         compas = compas.dropna()
@@ -68,9 +72,12 @@ class COMPAS(Dataset):
             {"African-American": 0, "Caucasian": 1}
         )
         compas["score_text"] = compas["score_text"].replace(
-            {"Medium": 0, "High": 1}
+            {"Low": 0, "Medium": 0, "High": 1}
         )
-        for col_name in ["c_charge_degree", "age_cat"]:
+        compas["v_score_text"] = compas["v_score_text"].replace(
+            {"Low": 0, "Medium": 0, "High": 1}
+        )
+        for col_name in ["age_cat", "c_charge_degree"]:
             compas[col_name] = compas[col_name].astype("category").cat.codes
         compas["two_year_recid"] = (compas["two_year_recid"] - 1) * -1
 

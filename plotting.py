@@ -16,9 +16,6 @@ from numpy.typing import NDArray
 from ferm_ge import ExpTrainResult, ExpValidResult, ParamSet
 
 __all__ = [
-    "DEFAULT_FIGSIZE",
-    "DEFAULT_COLOR",
-    "DEFAULT_LINESTYLE",
     "PlottingData",
     "make_plottingdata",
     "plot_results",
@@ -26,7 +23,7 @@ __all__ = [
     "parse_metric",
 ]
 
-DEFAULT_FIGSIZE = (3, 1.5)
+DEFAULT_FIGSIZE = (3.0, 1.5)
 DEFAULT_COLOR = "black"
 DEFAULT_LINESTYLE = "solid"
 
@@ -38,6 +35,12 @@ FArrayLike = NDArray[np.float_] | list[float] | tuple[float, ...] | None
 @dataclass
 class PlottingData:
     name: str
+
+    title: str | None
+    xlabel: str | None
+    ylabel: str | None
+    legend_loc: str
+    figsize: tuple[float, float]
 
     y: dict[str, FArrayLike]
     x: defaultdict[str, FArrayLike]
@@ -55,6 +58,11 @@ class PlottingData:
     def new() -> "PlottingData":
         return PlottingData(
             name="unknown",
+            title=None,
+            xlabel=None,
+            ylabel=None,
+            legend_loc="best",
+            figsize=DEFAULT_FIGSIZE,
             y={},
             x=defaultdict[str, FArrayLike](lambda: None),
             err=defaultdict[str, FArrayLike](lambda: None),
@@ -173,6 +181,34 @@ def parse_metric(
     )
 
 
+def parse_metricopt(
+    metricopt: str,
+) -> tuple[tuple[float, float], str | None, str | None, str | None, str]:
+    figsize = DEFAULT_FIGSIZE
+    xlabel = None
+    ylabel = None
+    title = None
+    legend_loc = "best"
+
+    assert metricopt.startswith("fig:"), "metricopt must start with fig:"
+    metricopt_items = metricopt.split(":")
+    for metricopt_item in metricopt_items[1:]:
+        if metricopt_item.startswith("f!"):
+            figsize = tuple(map(float, metricopt_item[2:].split(",")))  # type: ignore
+        elif metricopt_item.startswith("x!"):
+            xlabel = metricopt_item[2:]
+        elif metricopt_item.startswith("y!"):
+            ylabel = metricopt_item[2:]
+        elif metricopt_item.startswith("t!"):
+            title = metricopt_item[2:]
+        elif metricopt_item.startswith("l!"):
+            legend_loc = metricopt_item[2:]
+        else:
+            raise ValueError(f"unknown metricopt item: {metricopt_item}")
+
+    return figsize, xlabel, ylabel, title, legend_loc
+
+
 def make_plottingdata(
     results: dict[ParamSet, tuple[ExpTrainResult, ExpValidResult | None]],
     metrics: list[str],
@@ -203,16 +239,26 @@ def make_plottingdata(
     assert len(metrics) > 0, "metrics must not be empty"
     use_train_results = False
     use_valid_results = False
+    figsize = DEFAULT_FIGSIZE
+    xlabel = None
+    ylabel = None
+    title = None
+    legend_loc = "best"
+    metrics4plot = []
     for metric in metrics:
         assert metric.count(":") >= 1, f"invalid metric: {metric}"
         if metric.startswith("t:"):
             assert x_axis is None, "x_axis cannot be used with train results"
             use_train_results = True
+            metrics4plot.append(metric)
         elif metric.startswith("v:"):
             assert (
                 x_axis is not None and x_axis[:2] == "p."
             ), "x_axis must be specified using parameters with valid results"
             use_valid_results = True
+            metrics4plot.append(metric)
+        elif metric.startswith("fig:"):
+            figsize, xlabel, ylabel, title, legend_loc = parse_metricopt(metric)
         else:
             raise ValueError(f"unknown metric: {metric}")
     assert not (
@@ -253,11 +299,16 @@ def make_plottingdata(
         # and find proper legend/axis/color/linestyle for each metric.
 
         data = PlottingData.new()
+        data.figsize = figsize
+        data.xlabel = xlabel
+        data.ylabel = ylabel
+        data.title = title
+        data.legend_loc = legend_loc
         data_names = []
 
         if use_train_results:
             for ps in ps_list:
-                for metric in metrics:
+                for metric in metrics4plot:
                     (
                         _,
                         exp,
@@ -298,7 +349,7 @@ def make_plottingdata(
 
         if use_valid_results:
             assert x_axis is not None, "x_axis must be specified"
-            for metric in metrics:
+            for metric in metrics4plot:
                 part_id = metric
                 (
                     _,
@@ -367,12 +418,10 @@ def make_plottingdata(
 
 def plot_results(
     data: PlottingData,
-    figsize: tuple[float, float] = DEFAULT_FIGSIZE,
     ypad: float | None = None,
     xpad: float | None = None,
     ylim: list[tuple[float, float] | None] | None = None,
     xlim: tuple[float, float] | None = None,
-    legend_loc: str = "upper right",
     use_tex: bool = False,
 ) -> Figure:
     if use_tex:
@@ -390,7 +439,7 @@ def plot_results(
     use_axl = any([data.axis[k] == "left" for k in keys])
     use_legend = any([data.legend[k] is not None for k in keys])
 
-    fig, axl = plt.subplots(figsize=figsize)
+    fig, axl = plt.subplots(figsize=data.figsize)
     axr = axl.twinx() if use_axr else axl
 
     xmin, xmax = float("inf"), float("-inf")
@@ -489,9 +538,19 @@ def plot_results(
             rypad_value = ypad * (rymax - rymin) / (1 - 2 * ypad)
             axr.set_ylim(rymin - rypad_value, rymax + rypad_value)
 
+    # draw title
+    if data.title is not None:
+        axl.set_title(data.title)
+
+    # draw labels
+    if data.xlabel is not None:
+        axl.set_xlabel(data.xlabel)
+    if data.ylabel is not None:
+        axl.set_ylabel(data.ylabel)
+
     # draw legend
     if use_legend:
-        axr.legend(loc=legend_loc)
+        axr.legend(loc=data.legend_loc)
 
     return fig
 
