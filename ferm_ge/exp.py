@@ -189,6 +189,16 @@ def run_exp(
             v_ge = get_mean_std(v_ge_by_thr_idx, v_thr_probs, v_thr_choices)
             v_err = get_mean_std(v_err_by_thr_idx, v_thr_probs, v_thr_choices)
 
+            v_confmat_baseline = classifier.predict_valid(
+                thr_candidates[metric_baseline_idx]
+            )[1]
+            v_ge_baseline = calc_ge_confmat(
+                ps.alpha, ps.c, ps.a, *v_confmat_baseline
+            )
+            v_err_baseline = (
+                v_confmat_baseline[1] + v_confmat_baseline[2]
+            ) / sum(v_confmat_baseline)
+
             # collect testing results - 3 (v & rfp & rfn)
             v_v: tuple[float, float] | None = None
             v_group_size: dict[str, int] | None = None
@@ -270,11 +280,9 @@ def run_exp(
 
             valid_result = ExpValidResult(
                 ge=v_ge,
-                ge_baseline=t_ge_by_alpaca.get(alpha=ps.alpha, c=ps.c, a=ps.a)[
-                    metric_baseline_idx
-                ],
+                ge_baseline=v_ge_baseline,
                 err=v_err,
-                err_baseline=t_err_by_thr_idx[metric_baseline_idx],
+                err_baseline=v_err_baseline,
                 v=v_v,
                 group_size=v_group_size,
                 group_ratio=v_group_ratio,
