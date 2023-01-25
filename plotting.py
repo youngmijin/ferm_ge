@@ -54,6 +54,25 @@ class PlottingData:
     linewidth: defaultdict[str, float]
     legend: defaultdict[str, str | None]
 
+    def get_dict(self):
+        return {
+            "name": self.name,
+            "title": self.title,
+            "xlabel": self.xlabel,
+            "ylabel": self.ylabel,
+            "legend_loc": self.legend_loc,
+            "figsize": self.figsize,
+            "y": self.y,
+            "x": self.x,
+            "err": self.err,
+            "base": self.base,
+            "axis": self.axis,
+            "color": self.color,
+            "linestyle": self.linestyle,
+            "linewidth": self.linestyle,
+            "legend": self.legend,
+        }
+
     @staticmethod
     def new() -> "PlottingData":
         return PlottingData(

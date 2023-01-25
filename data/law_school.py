@@ -41,7 +41,7 @@ class LawSchool(Dataset):
     def file_md5_hash(self) -> str:
         return "3296294f79ddd38d8f5fe31499f6ee12"
 
-    def load(self):
+    def load(self, group_size: int = 2):
         law = pd.read_csv(self.file_local_path)
         law = law.dropna()
         law = law.reset_index(drop=True)
@@ -62,16 +62,19 @@ class LawSchool(Dataset):
         y_train = y_train.reset_index(drop=True)
         y_valid = y_valid.reset_index(drop=True)
 
-        self.group_indices = {
-            "female": (
-                X_train.index[X_train["male"] == 0.0].to_numpy(),
-                X_valid.index[X_valid["male"] == 0.0].to_numpy(),
-            ),
-            "male": (
-                X_train.index[X_train["male"] != 0.0].to_numpy(),
-                X_valid.index[X_valid["male"] != 0.0].to_numpy(),
-            ),
-        }
+        if group_size == 2:
+            self.group_indices = {
+                "female": (
+                    X_train.index[X_train["male"] == 0.0].to_numpy(),
+                    X_valid.index[X_valid["male"] == 0.0].to_numpy(),
+                ),
+                "male": (
+                    X_train.index[X_train["male"] != 0.0].to_numpy(),
+                    X_valid.index[X_valid["male"] != 0.0].to_numpy(),
+                ),
+            }
+        else:
+            raise ValueError("Invalid group size")
 
         self.X_train = X_train.to_numpy()
         self.X_valid = X_valid.to_numpy()

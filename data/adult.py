@@ -6,6 +6,11 @@ from numpy.typing import NDArray
 from sklearn.model_selection import train_test_split
 
 from .dataset import Dataset
+from .dataset_utils import (
+    GroupCriteria,
+    encode_onehot_columns,
+    make_group_indices,
+)
 
 
 class Adult(Dataset):
@@ -42,7 +47,7 @@ class Adult(Dataset):
     def file_md5_hash(self) -> str:
         return "46a9b0988c83b02d27640bf9ced3ab95"
 
-    def load(self):
+    def load(self, group_size: int = 2):
         adult = pd.read_csv(self.file_local_path)
         adult = adult.drop(columns=["fnlwgt"])
         adult = adult.replace({"?": np.nan})
@@ -51,16 +56,18 @@ class Adult(Dataset):
         adult = adult.replace({"Female": 0, "Male": 1})
         adult = adult.reset_index(drop=True)
 
-        for col_name in [
-            "workclass",
-            "education",
-            "marital-status",
-            "occupation",
-            "relationship",
-            "race",
-            "native-country",
-        ]:
-            adult[col_name] = adult[col_name].astype("category").cat.codes
+        adult = encode_onehot_columns(
+            adult,
+            [
+                "workclass",
+                "education",
+                "marital-status",
+                "occupation",
+                "relationship",
+                "race",
+                "native-country",
+            ],
+        )
 
         X = adult.drop(columns=["income"])
         y = adult["income"]
@@ -78,16 +85,12 @@ class Adult(Dataset):
         y_train = y_train.reset_index(drop=True)
         y_valid = y_valid.reset_index(drop=True)
 
-        self.group_indices = {
-            "female": (
-                X_train.index[X_train["gender"] == 0].to_numpy(),
-                X_valid.index[X_valid["gender"] == 0].to_numpy(),
-            ),
-            "male": (
-                X_train.index[X_train["gender"] == 1].to_numpy(),
-                X_valid.index[X_valid["gender"] == 1].to_numpy(),
-            ),
-        }
+        gender_gc: GroupCriteria = ("gender", {"female": [0], "male": [1]})
+
+        if group_size == 2:
+            self.group_indices = make_group_indices(X_train, X_valid, gender_gc)
+        else:
+            raise ValueError("Invalid group size")
 
         self.X_train = X_train.to_numpy()
         self.X_valid = X_valid.to_numpy()

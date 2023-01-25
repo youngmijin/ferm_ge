@@ -32,6 +32,7 @@ class ExpValidResult:
 
     v: tuple[float, float] | None
     group_size: dict[str, int] | None
+    group_confmat: dict[str, tuple[float, float, float, float]] | None
     group_ratio: dict[str, float] | None
     group_rfp: dict[str, tuple[float, float]] | None
     group_rfn: dict[str, tuple[float, float]] | None
@@ -52,7 +53,7 @@ def run_exp(
     include_valid: bool = True,
     include_group_metrics: bool = False,
     valid_times: int = 0,
-    thr_granularity: int = 200,
+    thr_granularity: int = 201,
     no_threading: bool = False,
 ) -> dict[ParamSet, tuple[ExpTrainResult, ExpValidResult | None]]:
     if not (include_valid or keep_trace):
@@ -201,6 +202,9 @@ def run_exp(
 
             # collect testing results - 3 (v & rfp & rfn)
             v_v: tuple[float, float] | None = None
+            v_group_confmat: dict[
+                str, tuple[float, float, float, float]
+            ] | None = None
             v_group_size: dict[str, int] | None = None
             v_group_ratio: dict[str, float] | None = None
             v_group_rfn: dict[str, tuple[float, float]] | None = None
@@ -212,6 +216,9 @@ def run_exp(
                 group_cnt = len(classifier.group_names)
                 group_size = np.zeros(group_cnt, dtype=np.int_)
                 v_v_by_thr_idx = np.zeros(v_thr_cnt, dtype=np.float_)
+                v_group_confmat_by_thr_idx = np.zeros(
+                    (v_thr_cnt, 4, group_cnt), dtype=np.float_
+                )
                 v_group_rfp_by_thr_idx = np.zeros(
                     (v_thr_cnt, group_cnt), dtype=np.float_
                 )
@@ -233,6 +240,7 @@ def run_exp(
                         )
                         group_confmat[:, group_idx] = confmat.astype(float)
                         group_size[group_idx] = np.sum(confmat)
+                    v_group_confmat_by_thr_idx[i] = group_confmat
                     v_v_by_thr_idx[i] = calc_ge_v(
                         ps.alpha, ps.c, ps.a, *group_confmat
                     )
@@ -252,11 +260,22 @@ def run_exp(
                 v_v = get_mean_std(v_v_by_thr_idx, v_thr_probs, v_thr_choices)
 
                 v_group_size = {}
+                v_group_confmat = {}
                 v_group_ratio = {}
                 v_group_rfp = {}
                 v_group_rfn = {}
                 for group_idx, group_name in enumerate(classifier.group_names):
                     v_group_size[group_name] = int(group_size[group_idx])
+                    v_group_confmat[group_name] = tuple(
+                        [
+                            get_mean_std(
+                                v_group_confmat_by_thr_idx[:, i, group_idx],
+                                v_thr_probs,
+                                v_thr_choices,
+                            )[0]
+                            for i in range(4)
+                        ]
+                    )  # type: ignore
                     v_group_ratio[group_name] = group_size[group_idx] / np.sum(
                         group_size
                     )
@@ -285,6 +304,7 @@ def run_exp(
                 err_baseline=v_err_baseline,
                 v=v_v,
                 group_size=v_group_size,
+                group_confmat=v_group_confmat,
                 group_ratio=v_group_ratio,
                 group_rfp=v_group_rfp,
                 group_rfn=v_group_rfn,

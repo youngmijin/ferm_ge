@@ -61,6 +61,7 @@ def main(
     study_type: str,
     dataset: str,
     dataset_url: str | None,
+    group_size: int,
     blc_max_iter: int,
     calc_between_groups: bool,
     thr_granularity: int,
@@ -123,7 +124,7 @@ def main(
         raise ValueError(f"invalid dataset: {dataset}")
     data = data_class()
     data.download(remote_url=dataset_url)
-    data.load()
+    data.load(group_size)
     print("dataset:", data.name)
 
     # pre-train classifier
@@ -134,6 +135,8 @@ def main(
         data.train_group_indices,
         data.valid_group_indices,
     )
+    if calc_between_groups:
+        print("groups:", len(data.train_group_indices))
 
     print()
 
@@ -172,6 +175,8 @@ def main(
         unit_param_dict_readable["thr_granularity"] = thr_granularity
         unit_param_dict_readable["valid_times"] = valid_times
         unit_param_dict_readable["blc_max_iter"] = blc_max_iter
+        if calc_between_groups:
+            unit_param_dict_readable["group_size"] = group_size
 
         unit_param_dict_readable_plotting: dict[str, Any] = {}
         if study_type == "convergence":
@@ -234,6 +239,14 @@ def main(
                 confidence_band,
                 UNIT_PLOT_X_AXIS,
             ):
+                if save_pkl:
+                    fig_pkl_path = os.path.join(
+                        output_dir,
+                        f"{fname_prefix}_{pdata.name}.pkl",
+                    )
+                    with open(fig_pkl_path, "wb") as bf:
+                        pickle.dump(pdata.get_dict().copy(), bf)
+                    print(f"  ├─ saved {fig_pkl_path}")
                 fig = plot_results(
                     pdata,
                     ypad=UNIT_PLOT_YPAD,
@@ -359,6 +372,13 @@ if __name__ == "__main__":
         help="dataset url to download; use if hard-coded dataset url is broken",
     )
     expopt.add_argument(
+        "--group_size",
+        type=int,
+        default=2,
+        metavar="N",
+        help="group size; some dataset may not support other than 2",
+    )
+    expopt.add_argument(
         "--blc_max_iter",
         type=int,
         default=1000,
@@ -373,7 +393,7 @@ if __name__ == "__main__":
     expopt.add_argument(
         "--thr_granularity",
         type=int,
-        default=200,
+        default=201,
         metavar="N",
         help="threshold granularity; same as hyper-parameter granularity",
     )

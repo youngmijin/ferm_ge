@@ -41,7 +41,7 @@ class DutchCensus(Dataset):
     def file_md5_hash(self) -> str:
         return "2f485f59ef3bc471e4ab70f66c785171"
 
-    def load(self):
+    def load(self, group_size: int = 2):
         census = pd.read_csv(self.file_local_path)
         census = census.dropna()
         census = census.replace({"5_4_9": 0, "2_1": 1})
@@ -63,16 +63,19 @@ class DutchCensus(Dataset):
         y_train = y_train.reset_index(drop=True)
         y_valid = y_valid.reset_index(drop=True)
 
-        self.group_indices = {
-            "female": (
-                X_train.index[X_train["sex"] == 2].to_numpy(),
-                X_valid.index[X_valid["sex"] == 2].to_numpy(),
-            ),
-            "male": (
-                X_train.index[X_train["sex"] == 1].to_numpy(),
-                X_valid.index[X_valid["sex"] == 1].to_numpy(),
-            ),
-        }
+        if group_size == 2:
+            self.group_indices = {
+                "female": (
+                    X_train.index[X_train["sex"] == 2].to_numpy(),
+                    X_valid.index[X_valid["sex"] == 2].to_numpy(),
+                ),
+                "male": (
+                    X_train.index[X_train["sex"] == 1].to_numpy(),
+                    X_valid.index[X_valid["sex"] == 1].to_numpy(),
+                ),
+            }
+        else:
+            raise ValueError("Invalid group size")
 
         self.X_train = X_train.to_numpy()
         self.X_valid = X_valid.to_numpy()

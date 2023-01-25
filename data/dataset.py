@@ -47,7 +47,7 @@ class Dataset(ABC):
             raise RuntimeError("downloaded file is corrupted")
 
     @abstractmethod
-    def load(self):
+    def load(self, group_size: int):
         pass
 
     @property

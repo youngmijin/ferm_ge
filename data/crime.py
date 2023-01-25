@@ -47,7 +47,7 @@ class CommunitiesAndCrime(Dataset):
     def file_md5_hash(self) -> str:
         return "3ff412ab144c7096c1c10c63c24c089a"
 
-    def load(self):
+    def load(self, group_size: int = 2):
         crime = pd.read_csv(self.file_local_path)
         crime = crime[
             [
@@ -100,16 +100,19 @@ class CommunitiesAndCrime(Dataset):
         y_train = y_train.reset_index(drop=True)
         y_valid = y_valid.reset_index(drop=True)
 
-        self.group_indices = {
-            "Lower-AfrAm-Rate": (
-                X_train.index[X_train["racepctblack"] < 30].to_numpy(),
-                X_valid.index[X_valid["racepctblack"] < 30].to_numpy(),
-            ),
-            "Higher-AfrAm-Rate": (
-                X_train.index[X_train["racepctblack"] >= 30].to_numpy(),
-                X_valid.index[X_valid["racepctblack"] >= 30].to_numpy(),
-            ),
-        }
+        if group_size == 2:
+            self.group_indices = {
+                "Lower-AfrAm-Rate": (
+                    X_train.index[X_train["racepctblack"] < 30].to_numpy(),
+                    X_valid.index[X_valid["racepctblack"] < 30].to_numpy(),
+                ),
+                "Higher-AfrAm-Rate": (
+                    X_train.index[X_train["racepctblack"] >= 30].to_numpy(),
+                    X_valid.index[X_valid["racepctblack"] >= 30].to_numpy(),
+                ),
+            }
+        else:
+            raise ValueError("Invalid group size")
 
         self.X_train = X_train.to_numpy()
         self.X_valid = X_valid.to_numpy()

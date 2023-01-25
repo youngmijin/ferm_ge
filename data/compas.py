@@ -6,6 +6,11 @@ from numpy.typing import NDArray
 from sklearn.model_selection import train_test_split
 
 from .dataset import Dataset
+from .dataset_utils import (
+    GroupCriteria,
+    encode_onehot_columns,
+    make_group_indices,
+)
 
 
 class COMPAS(Dataset):
@@ -42,7 +47,7 @@ class COMPAS(Dataset):
     def file_md5_hash(self) -> str:
         return "9165d40c400bba93a8cffece2b74622b"
 
-    def load(self):
+    def load(self, group_size: int = 2):
         compas = pd.read_csv(self.file_local_path)
         compas = compas[compas["days_b_screening_arrest"] <= 30]
         compas = compas[compas["days_b_screening_arrest"] >= -30]
@@ -77,8 +82,7 @@ class COMPAS(Dataset):
         compas["v_score_text"] = compas["v_score_text"].replace(
             {"Low": 0, "Medium": 0, "High": 1}
         )
-        for col_name in ["age_cat", "c_charge_degree"]:
-            compas[col_name] = compas[col_name].astype("category").cat.codes
+        compas = encode_onehot_columns(compas, ["age_cat", "c_charge_degree"])
         compas["two_year_recid"] = (compas["two_year_recid"] - 1) * -1
 
         X = compas.drop(columns="two_year_recid")
@@ -97,16 +101,15 @@ class COMPAS(Dataset):
         y_train = y_train.reset_index(drop=True)
         y_valid = y_valid.reset_index(drop=True)
 
-        self.group_indices = {
-            "African-American": (
-                X_train.index[X_train["race"] == 0].to_numpy(),
-                X_valid.index[X_valid["race"] == 0].to_numpy(),
-            ),
-            "Caucasian": (
-                X_train.index[X_train["race"] == 1].to_numpy(),
-                X_valid.index[X_valid["race"] == 1].to_numpy(),
-            ),
-        }
+        race_gc: GroupCriteria = (
+            "race",
+            {"African-American": [0], "Caucasian": [1]},
+        )
+
+        if group_size == 2:
+            self.group_indices = make_group_indices(X_train, X_valid, race_gc)
+        else:
+            raise ValueError("Invalid group size")
 
         self.X_train = X_train.to_numpy()
         self.X_valid = X_valid.to_numpy()
