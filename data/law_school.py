@@ -35,7 +35,7 @@ class LawSchool(Dataset):
 
     @property
     def file_remote_url(self) -> str:
-        return "https://b31.sharepoint.com/:x:/g/EaxpG0Gd-tZGiS6n4h11lkYBP3oAcTC3LieLiNmxU8pJdg?e=9vOEBj&download=1"
+        return "https://www.dropbox.com/s/heyekivhlh0ipyo/law_dataset.csv?dl=1"
 
     @property
     def file_md5_hash(self) -> str:

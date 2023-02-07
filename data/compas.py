@@ -41,7 +41,7 @@ class COMPAS(Dataset):
 
     @property
     def file_remote_url(self) -> str:
-        return "https://b31.sharepoint.com/:x:/g/ETJqjlIrvvZGq98Knhmzc40Blx_z4fAC6AwiLExZbcRjgw?e=waxU8M&download=1"
+        return "https://www.dropbox.com/s/94lbdcu901akn4d/compas_scores_two_years.csv?dl=1"
 
     @property
     def file_md5_hash(self) -> str:

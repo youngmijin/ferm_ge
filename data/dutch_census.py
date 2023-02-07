@@ -35,7 +35,7 @@ class DutchCensus(Dataset):
 
     @property
     def file_remote_url(self) -> str:
-        return "https://b31.sharepoint.com/:x:/g/EUw9H6-gTWJPiB7HFr7qmWgB5xx-XSXz92hwOOXs52PXig?e=vtDfb4&download=1"
+        return "https://www.dropbox.com/s/4x2zdcg8ulm3fw1/dutch_census_2001.csv?dl=1"
 
     @property
     def file_md5_hash(self) -> str:

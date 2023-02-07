@@ -41,7 +41,7 @@ class CommunitiesAndCrime(Dataset):
 
     @property
     def file_remote_url(self) -> str:
-        return "https://b31.sharepoint.com/:x:/g/EYVchXteXn9Gg9QUb2QQbOMBpsT-FZA6CKvuNKK8YRy90A?e=mftpOt&download=1"
+        return "https://www.dropbox.com/s/2oscje2cdbzmlfx/crimedata.csv?dl=1"
 
     @property
     def file_md5_hash(self) -> str:

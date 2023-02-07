@@ -41,7 +41,7 @@ class Adult(Dataset):
 
     @property
     def file_remote_url(self) -> str:
-        return "https://b31.sharepoint.com/:x:/g/ES-9TvClbj1ElsZOgMjiZQsBkFRNqLk0Sp1HUPPwC7yInA?e=xdCLvM&download=1"
+        return "https://www.dropbox.com/s/brf9er2w4kqijs8/adult.csv?dl=1"
 
     @property
     def file_md5_hash(self) -> str:
